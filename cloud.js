@@ -82,7 +82,7 @@ class SimsCloud {
       const { data, error } = await this.client
         .from("students")
         .select(
-          "id,student_id,name,course,year_level,contact_number,enrollment_status,version,library_clearances(status,updated_at)"
+          "id,student_id,name,surname,first_name,middle_name,suffix,course,year_level,contact_number,enrollment_status,version,library_clearances(status,updated_at)"
         )
         .is("deleted_at", null)
         .order("id")
@@ -97,6 +97,10 @@ class SimsCloud {
       id: row.id,
       studentId: row.student_id,
       name: row.name,
+      surname: row.surname,
+      firstName: row.first_name,
+      middleName: row.middle_name,
+      suffix: row.suffix,
       course: row.course,
       year: row.year_level,
       contact: row.contact_number,
@@ -110,12 +114,22 @@ class SimsCloud {
 
   async saveStudent(student, existing) {
     const values = {
-      name: student.name,
-      course: student.course,
       year_level: student.year,
       contact_number: student.contact,
       enrollment_status: student.status,
     };
+
+    if (student.name !== undefined) {
+      Object.assign(values, {
+        name: student.name,
+        surname: student.surname,
+        first_name: student.firstName,
+        middle_name: student.middleName || null,
+        suffix: student.suffix || null,
+      });
+    }
+
+    if (student.course !== undefined) values.course = student.course;
 
     if (!existing) {
       const { error } = await this.client.from("students").insert(values);
