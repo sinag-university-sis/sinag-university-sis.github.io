@@ -1986,3 +1986,42 @@ html body:not(:has(#sign-in:not([hidden]))) main {
 #toggle-login-password[data-visible="true"] .password-eye-slash {
   display: block;
 }
+#clearance .table-card > .search {
+  display: grid;
+  grid-template-columns: minmax(0, 24rem) minmax(0, 14rem);
+  grid-template-areas: "label filter" "input filter";
+  justify-content: space-between;
+  align-items: end;
+  gap: .35rem 1rem;
+}
+
+#clearance label[for="clearance-search"] {
+  grid-area: label;
+}
+
+#clearance #clearance-search {
+  grid-area: input;
+  width: 100%;
+  max-width: none;
+}
+
+#clearance #clearance-search + label {
+  grid-area: filter;
+  display: grid;
+  gap: .35rem;
+}
+
+#clearance #clearance-search + label select {
+  width: 100%;
+}
+
+@media (max-width: 640px) {
+  #clearance .table-card > .search {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "label" "input" "filter";
+  }
+
+  #clearance #clearance-search + label {
+    margin-top: .5rem;
+  }
+}
