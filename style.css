@@ -2025,3 +2025,29 @@ html body:not(:has(#sign-in:not([hidden]))) main {
     margin-top: .5rem;
   }
 }
+#clearance div:has(> label > #clearance-search) {
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  align-items: end;
+}
+
+#clearance div:has(> label > #clearance-search) > label {
+  grid-area: auto;
+  display: grid;
+  gap: .35rem;
+  min-width: 0;
+  margin: 0;
+}
+
+#clearance div:has(> label > #clearance-search) > label :is(input, select) {
+  grid-area: auto;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: none;
+  height: 2.75rem;
+}
+
+@media (max-width: 640px) {
+  #clearance div:has(> label > #clearance-search) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
