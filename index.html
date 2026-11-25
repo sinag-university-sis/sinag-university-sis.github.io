@@ -116,6 +116,181 @@
         <article class="cleared"><span>Cleared</span><strong id="Cleared">0</strong></article>
         <article class="not-cleared"><span>Not Cleared</span><strong id="Not-Cleared">0</strong></article>
       </div>
+      <section id="campus-calendar" aria-labelledby="campus-calendar-title">
+  <style>
+    #campus-calendar { margin: 1.5rem 0; }
+    #campus-calendar .campus-card {
+      background: #fff;
+      border: 1px solid #cad7df;
+      border-radius: 1rem;
+      padding: clamp(.75rem, 2vw, 1.5rem);
+      margin-bottom: 1rem;
+    }
+    #campus-calendar .calendar-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: .5rem;
+      margin-bottom: .75rem;
+    }
+    #campus-calendar button { min-width: 44px; min-height: 44px; }
+    #campus-calendar .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: .25rem;
+      text-align: center;
+      font-size: .85rem;
+    }
+    #campus-calendar .calendar-grid time {
+      display: block;
+      min-height: 2.75rem;
+      padding: .35rem .1rem;
+      border-radius: .35rem;
+      background: #edf2f5;
+    }
+    #campus-calendar .calendar-grid [aria-current="date"] {
+      background: #d8eaf6;
+      color: #163c59;
+      font-weight: 700;
+      box-shadow: inset 0 0 0 2px #3d627c;
+    }
+    #campus-calendar .calendar-grid small { display: block; }
+    #campus-calendar .campus-statements {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+      gap: 1rem;
+    }
+  </style>
+
+  <div class="campus-card">
+    <h2 id="campus-calendar-title">Campus Calendar</h2>
+    <div class="calendar-toolbar">
+      <strong id="campus-month" aria-live="polite"></strong>
+      <div role="group" aria-label="Calendar navigation">
+        <button type="button" id="campus-prev" aria-label="Previous month">‹</button>
+        <button type="button" id="campus-today">Today</button>
+        <button type="button" id="campus-next" aria-label="Next month">›</button>
+      </div>
+    </div>
+    <div id="campus-grid" class="calendar-grid"></div>
+  </div>
+
+  <div class="campus-card">
+    <h2>Campus Events</h2>
+    <p id="campus-events-empty">No campus events scheduled this month.</p>
+    <ul id="campus-events-list" hidden></ul>
+  </div>
+
+  <div class="campus-statements">
+    <div class="campus-card">
+      <h2>Vision</h2>
+      <p>To become a trusted university that inspires students to reach their full potential, achieve their dreams, and become responsible individuals who make a positive difference in society.</p>
+    </div>
+    <div class="campus-card">
+      <h2>Mission</h2>
+      <p>To provide quality and accessible education that develops students' knowledge, skills, and talents. Sinag University aims to create a supportive learning environment that encourages creativity, discipline, and confidence while preparing students for a successful future.</p>
+    </div>
+  </div>
+
+  <script>
+    (() => {
+      const events = [];
+      const get = (id) => document.getElementById(id);
+      const grid = get("campus-grid");
+      const list = get("campus-events-list");
+
+      const philippineDate = new Intl.DateTimeFormat("en", {
+        timeZone: "Asia/Manila",
+        year: "numeric",
+        month: "numeric",
+        day: "numeric",
+      });
+      const monthLabel = new Intl.DateTimeFormat("en", {
+        timeZone: "UTC",
+        month: "long",
+        year: "numeric",
+      });
+
+      function today() {
+        const parts = Object.fromEntries(
+          philippineDate.formatToParts().map(({ type, value }) => [type, value])
+        );
+        return new Date(Date.UTC(+parts.year, +parts.month - 1, +parts.day));
+      }
+
+      const dateKey = (date) => date.toISOString().slice(0, 10);
+      let month = today();
+      month.setUTCDate(1);
+
+      function render() {
+        get("campus-month").textContent = monthLabel.format(month);
+        grid.replaceChildren();
+
+        for (const weekday of ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]) {
+          const heading = document.createElement("strong");
+          heading.textContent = weekday;
+          grid.append(heading);
+        }
+
+        const year = month.getUTCFullYear();
+        const monthIndex = month.getUTCMonth();
+        const days = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+        const todayKey = dateKey(today());
+        const monthKey = dateKey(month).slice(0, 7);
+        const monthlyEvents = events
+          .filter((event) => event.date.slice(0, 7) === monthKey)
+          .sort((a, b) => a.date.localeCompare(b.date));
+
+        for (let offset = 0; offset < month.getUTCDay(); offset++) {
+          grid.append(document.createElement("span"));
+        }
+
+        for (let day = 1; day <= days; day++) {
+          const key = dateKey(new Date(Date.UTC(year, monthIndex, day)));
+          const cell = document.createElement("time");
+          cell.dateTime = key;
+          cell.textContent = day;
+
+          if (key === todayKey) cell.setAttribute("aria-current", "date");
+
+          const count = monthlyEvents.filter((event) => event.date === key).length;
+          if (count) {
+            const label = document.createElement("small");
+            label.textContent = count === 1 ? "1 event" : `${count} events`;
+            cell.append(label);
+          }
+          grid.append(cell);
+        }
+
+        list.replaceChildren(...monthlyEvents.map((event) => {
+          const item = document.createElement("li");
+          item.textContent = [event.date, event.name, event.details]
+            .filter(Boolean).join(" · ");
+          return item;
+        }));
+        list.hidden = monthlyEvents.length === 0;
+        get("campus-events-empty").hidden = !list.hidden;
+      }
+
+      get("campus-prev").onclick = () => {
+        month.setUTCMonth(month.getUTCMonth() - 1);
+        render();
+      };
+      get("campus-next").onclick = () => {
+        month.setUTCMonth(month.getUTCMonth() + 1);
+        render();
+      };
+      get("campus-today").onclick = () => {
+        month = today();
+        month.setUTCDate(1);
+        render();
+      };
+
+      render();
+    })();
+  </script>
+</section>
     </section>
 
     <section id="students" aria-labelledby="students-title" hidden>
