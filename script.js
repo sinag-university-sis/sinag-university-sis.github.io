@@ -789,7 +789,20 @@ for (const status of clearanceStatuses) {
 const clearanceFilterLabel = document.createElement("label");
 clearanceFilterLabel.textContent = "Clearance status";
 clearanceFilterLabel.append(clearanceFilter);
-byId("clearance-search").after(clearanceFilterLabel);
+const clearanceSearchInput = byId("clearance-search");
+const clearanceSearchBar = clearanceSearchInput.closest(".search");
+const clearanceTableCard = clearanceSearchBar.closest(".table-card");
+const clearanceSearchLabel = clearanceSearchBar.querySelector("label");
+
+clearanceSearchLabel.textContent = "Search students";
+clearanceSearchInput.placeholder = "Student number or name";
+clearanceSearchLabel.append(clearanceSearchInput);
+
+clearanceSearchBar.classList.remove("search");
+clearanceSearchBar.style.cssText =
+  "display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr)); gap:.75rem; margin-block:1rem;";
+clearanceSearchBar.append(clearanceFilterLabel);
+clearanceTableCard.before(clearanceSearchBar);
 
 clearanceFilter.addEventListener("change", () => {
   location.hash = clearanceFilter.value
