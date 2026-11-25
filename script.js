@@ -357,8 +357,13 @@ function selectedClearanceStatus() {
 function renderClearance() {
   const query = byId("clearance-search").value.trim().toLowerCase();
   const status = selectedClearanceStatus();
-  filterSummary.hidden = !status;
-  filterLabel.textContent = status ? `Showing: ${status}` : "";
+  clearanceFilter.value = status;
+
+  if (query !== previousClearanceQuery || status !== previousClearanceStatus) {
+    clearancePage = 1;
+    previousClearanceQuery = query;
+    previousClearanceStatus = status;
+  }
 
   const matches = activeStudents().filter((student) => {
     const matchesStatus = !status || clearance(student) === status;
@@ -368,7 +373,12 @@ function renderClearance() {
     return matchesStatus && matchesSearch;
   });
 
-  const rows = matches.map((student) => {
+  const pageCount = Math.max(1, Math.ceil(matches.length / clearancePageSize));
+  clearancePage = Math.min(Math.max(clearancePage, 1), pageCount);
+  const start = (clearancePage - 1) * clearancePageSize;
+  const end = Math.min(start + clearancePageSize, matches.length);
+
+  const rows = matches.slice(start, end).map((student) => {
     const row = document.createElement("tr");
     row.insertCell().textContent = student.studentId;
     row.insertCell().textContent = student.name;
@@ -378,6 +388,12 @@ function renderClearance() {
 
   byId("clearance-rows").replaceChildren(...rows);
   byId("clearance-empty").hidden = matches.length > 0;
+  clearancePager.hidden = matches.length === 0;
+  clearancePageSummary.textContent = matches.length
+    ? `Showing ${start + 1}–${end} of ${matches.length} students`
+    : "";
+  clearancePrevious.disabled = clearancePage === 1;
+  clearanceNext.disabled = clearancePage === pageCount;
 }
 
 function studentFieldLabel(student, key) {
@@ -759,18 +775,57 @@ async function startCloud() {
   });
 }
 
-const filterSummary = document.createElement("p");
-filterSummary.hidden = true;
-filterSummary.style.marginTop = "0.6rem";
+const clearancePageSize = 10;
+let clearancePage = 1;
+let previousClearanceQuery = "";
+let previousClearanceStatus = "";
 
-const filterLabel = document.createElement("span");
-filterLabel.setAttribute("role", "status");
+const clearanceFilter = document.createElement("select");
+clearanceFilter.add(new Option("All statuses", ""));
+for (const status of clearanceStatuses) {
+  clearanceFilter.add(new Option(status, status));
+}
 
-const clearFilter = document.createElement("a");
-clearFilter.href = "#clearance";
-clearFilter.textContent = "Clear filter";
-filterSummary.append(filterLabel, " · ", clearFilter);
-byId("clearance-search").after(filterSummary);
+const clearanceFilterLabel = document.createElement("label");
+clearanceFilterLabel.textContent = "Clearance status";
+clearanceFilterLabel.append(clearanceFilter);
+byId("clearance-search").after(clearanceFilterLabel);
+
+clearanceFilter.addEventListener("change", () => {
+  location.hash = clearanceFilter.value
+    ? `clearance?status=${encodeURIComponent(clearanceFilter.value)}`
+    : "clearance";
+});
+
+const clearancePager = document.createElement("div");
+clearancePager.className = "student-records-pager";
+clearancePager.hidden = true;
+clearancePager.setAttribute("role", "group");
+clearancePager.setAttribute("aria-label", "Library clearance pagination");
+
+const clearancePageSummary = document.createElement("p");
+clearancePageSummary.setAttribute("role", "status");
+
+const clearanceButtons = document.createElement("div");
+const clearancePrevious = document.createElement("button");
+const clearanceNext = document.createElement("button");
+
+for (const [button, label, direction] of [
+  [clearancePrevious, "Previous", -1],
+  [clearanceNext, "Next", 1],
+]) {
+  button.type = "button";
+  button.className = "secondary";
+  button.textContent = label;
+  button.addEventListener("click", () => {
+    clearancePage += direction;
+    renderClearance();
+  });
+  clearanceButtons.append(button);
+}
+
+clearancePager.append(clearancePageSummary, clearanceButtons);
+byId("clearance-empty").after(clearancePager);
 
 for (const status of clearanceStatuses) {
   const card = byId(status.replace(" ", "-")).closest("article");
