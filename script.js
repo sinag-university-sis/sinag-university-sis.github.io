@@ -383,15 +383,39 @@ function savedCourseOption(course) {
 
 function openEditor(student = null) {
   editing = student;
+  const courseSelect = form.elements.namedItem("course");
+  courseSelect.querySelector("[data-saved-course]")?.remove();
   form.reset();
   message("form-error", "");
   byId("editor-title").textContent = student ? "Edit student" : "Add student";
 
+  const hasLegacyName = Boolean(student && !student.surname && !student.firstName);
+  const legacyName = byId("legacy-student-name");
+  legacyName.hidden = !hasLegacyName;
+  legacyName.textContent = hasLegacyName
+    ? `Saved name: ${student.name}. Fill in the name fields to update it.`
+    : "";
+  for (const key of ["surname", "firstName", "middleName", "suffix"]) {
+    form.elements.namedItem(key).value = student?.[key] ?? "";
+  }
+  form.elements.namedItem("surname").required = !hasLegacyName;
+  form.elements.namedItem("firstName").required = !hasLegacyName;
+
   if (student) {
     for (const [key] of fields) {
-      form.elements.namedItem(key).value = key === "course"
-        ? savedCourseOption(student.course)
-        : student[key];
+      if (key !== "course" && key !== "name") {
+        form.elements.namedItem(key).value = student[key];
+      }
+    }
+
+    const courseCode = savedCourseOption(student.course);
+    if (courseCode) {
+      courseSelect.value = courseCode;
+    } else {
+      const savedOption = new Option(student.course, student.course);
+      savedOption.dataset.savedCourse = "";
+      courseSelect.add(savedOption);
+      savedOption.selected = true;
     }
   }
 
@@ -409,19 +433,41 @@ function readStudent() {
   const values = new FormData(form);
 
   const student = {
-    name: String(values.get("name") ?? "").trim(),
-    course: String(values.get("course") ?? "").trim(),
     year: Number(values.get("year")),
     contact: String(values.get("contact") ?? ""),
     status: String(values.get("status") ?? "").trim(),
   };
 
-  if (!student.name || student.name.length > 120) {
-    throw new Error("Enter a full name of up to 120 characters.");
+  const surname = String(values.get("surname") ?? "").trim();
+  const firstName = String(values.get("firstName") ?? "").trim();
+  const middleName = String(values.get("middleName") ?? "").trim();
+  const enteredSuffix = String(values.get("suffix") ?? "").trim();
+  const suffix = /^n\/a$/i.test(enteredSuffix) ? "" : enteredSuffix;
+  if (suffix.length > 16) {
+    throw new Error("Suffix must be 16 characters or fewer.");
+  }
+  const hasLegacyName = editing && !editing.surname && !editing.firstName;
+
+  if (!hasLegacyName || surname || firstName || middleName || suffix) {
+    if (!surname || !firstName) {
+      throw new Error("Enter both the surname and first name.");
+    }
+
+    const name = [firstName, middleName, surname, suffix].filter(Boolean).join(" ");
+    if (name.length > 120) {
+      throw new Error("The combined name must be 120 characters or fewer.");
+    }
+
+    Object.assign(student, { name, surname, firstName, middleName, suffix });
   }
 
-  if (!["IT", "CS", "HM", "Psych", "Civil Engineering"].includes(student.course)) {
-    throw new Error("Choose a course from the list.");
+  const course = String(values.get("course") ?? "");
+  const savedCourse = editing && (savedCourseOption(editing.course) || editing.course);
+  if (!editing || course !== savedCourse) {
+    if (!["IT", "CS", "HM", "Psych", "Civil Engineering"].includes(course)) {
+      throw new Error("Choose a course from the list.");
+    }
+    student.course = course;
   }
 
   if (!Number.isInteger(student.year) || student.year < 1 || student.year > 6) {
