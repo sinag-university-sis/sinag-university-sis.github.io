@@ -264,15 +264,28 @@
   <dialog id="editor" aria-labelledby="editor-title">
     <form id="student-form">
       <h2 id="editor-title">Add student</h2>
+      <p id="legacy-student-name" hidden></p>
       <div class="fields">
         <label>
           Student number
           <input name="studentId" placeholder="Assigned on save" readonly>
         </label>
-        <label>
-          Full name
-          <input name="name" required maxlength="120">
-        </label>
+       <label>
+  Surname
+  <input name="surname" autocomplete="family-name" maxlength="120" required>
+</label>
+<label>
+  First name
+  <input name="firstName" autocomplete="given-name" maxlength="120" required>
+</label>
+<label>
+  Middle name (optional)
+  <input name="middleName" autocomplete="additional-name" maxlength="120">
+</label>
+<label>
+  Suffix
+  <input name="suffix" autocomplete="honorific-suffix" maxlength="16" placeholder="N/A">
+</label>
         <label>
           Course
           <select name="course" required>
