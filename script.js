@@ -1245,3 +1245,23 @@ if (cloudMode) {
     agreement.focus();
   }, true);
 }
+
+// Show or hide the password on the sign-in form.
+{
+  const password = document.getElementById("login-password");
+  const toggle = document.getElementById("toggle-login-password");
+
+  function setPasswordVisibility(visible) {
+    password.type = visible ? "text" : "password";
+    const label = visible ? "Hide password" : "Show password";
+    toggle.setAttribute("aria-label", label);
+    toggle.title = label;
+    toggle.dataset.visible = String(visible);
+  }
+
+  toggle.addEventListener("click", () => {
+    setPasswordVisibility(password.type === "password");
+  });
+
+  password.form.addEventListener("reset", () => setPasswordVisibility(false));
+}

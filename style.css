@@ -1953,3 +1953,36 @@ html body:not(:has(#sign-in:not([hidden]))) main {
   max-width: none;
   min-width: 0;
 }
+
+#sign-in .login-password-control { position: relative; }
+
+#sign-in #login-password { padding-right: 3.25rem; }
+
+#sign-in #toggle-login-password {
+  position: absolute;
+  top: 50%;
+  right: 0.25rem;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  padding: 0;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #43647c;
+  box-shadow: none;
+}
+
+#sign-in #toggle-login-password:hover {
+  background: #e8eff5;
+  box-shadow: none;
+  filter: none;
+}
+
+#toggle-login-password .password-eye-slash { display: none; }
+
+#toggle-login-password[data-visible="true"] .password-eye-slash {
+  display: block;
+}
