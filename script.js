@@ -1,0 +1,1247 @@
+"use strict";
+
+const byId = (id) => document.getElementById(id);
+const config = window.SIMS_CONFIG ?? {};
+const cloudMode = Boolean(config.supabaseUrl || config.supabasePublishableKey);
+const storageKey = "sims-demo-v1";
+const form = byId("student-form");
+const authForm = byId("sign-in-form");
+const pages = ["dashboard", "students", "clearance", "settings", "library-activity"];
+const enrollmentStatuses = ["Enrolled", "Not Enrolled"];
+const clearanceStatuses = ["Pending", "Cleared", "Not Cleared"];
+const fields = [
+  ["studentId", "Student number"],
+  ["name", "Full name"],
+  ["course", "Course"],
+  ["year", "Year level"],
+  ["contact", "Contact number"],
+  ["status", "Enrollment status"],
+];
+
+const samples = [
+  { id: 1, studentId: "2026-001", name: "Alex Santos", course: "BSIT", year: 1, contact: "000-000-0001", status: "Enrolled", clearance: "Cleared", deletedAt: null },
+  { id: 2, studentId: "2026-002", name: "Sam Reyes", course: "BSCS", year: 2, contact: "000-000-0002", status: "Enrolled", clearance: null, deletedAt: null },
+  { id: 3, studentId: "2026-003", name: "Jamie Cruz", course: "BSIS", year: 3, contact: "000-000-0003", status: "Not Enrolled", clearance: "Not Cleared", deletedAt: null },
+];
+
+let records = [];
+let cloud;
+let staff = null;
+let busy = false;
+let editing = null;
+let removing = null;
+let storageSnapshot = null;
+let storageError = "";
+
+function message(id, text) {
+  const element = byId(id);
+  element.textContent = text;
+  element.hidden = !text;
+}
+
+function loadDemo() {
+  try {
+    storageSnapshot = localStorage.getItem(storageKey);
+    if (storageSnapshot === null) return samples;
+
+    const saved = JSON.parse(storageSnapshot);
+    const valid = Array.isArray(saved) && saved.every((student) =>
+      student &&
+      Number.isSafeInteger(student.id) &&
+      student.id > 0 &&
+      ["studentId", "name", "course", "contact"].every(
+        (key) => typeof student[key] === "string" && student[key].trim()
+      ) &&
+      Number.isSafeInteger(student.year) && student.year >= 1 &&
+      enrollmentStatuses.includes(student.status) &&
+      (student.clearance == null || clearanceStatuses.includes(student.clearance)) &&
+      (student.deletedAt == null ||
+        (typeof student.deletedAt === "string" && !Number.isNaN(Date.parse(student.deletedAt))))
+    );
+
+    if (!valid ||
+        new Set(saved.map((student) => student.id)).size !== saved.length ||
+        new Set(saved.map((student) => student.studentId.trim().toLowerCase())).size !== saved.length) {
+      throw new Error("Invalid stored records");
+    }
+    return saved;
+  } catch {
+    storageError = "Saved records could not be opened. Sample records are read-only.";
+    return samples;
+  }
+}
+
+function saveDemo(nextRecords) {
+  if (storageError) throw new Error(storageError);
+
+  try {
+    if (localStorage.getItem(storageKey) !== storageSnapshot) {
+      throw Object.assign(new Error("Records changed in another tab. Refresh and try again."), {
+        code: "DEMO_CONFLICT",
+      });
+    }
+    const nextSnapshot = JSON.stringify(nextRecords);
+    localStorage.setItem(storageKey, nextSnapshot);
+    storageSnapshot = nextSnapshot;
+  } catch (error) {
+    if (error.code === "DEMO_CONFLICT") throw error;
+    throw new Error("Browser storage is full or unavailable. Changes were not saved.");
+  }
+
+  records = nextRecords;
+  render();
+}
+
+function showPage() {
+  const requested = location.hash.slice(1).split("?")[0];
+  const page = pages.includes(requested) ? requested : "dashboard";
+  const canView = !cloudMode || Boolean(staff);
+
+  for (const id of pages) {
+    byId(id).hidden = !canView || id !== page;
+  }
+
+  byId("sign-in").hidden = !cloudMode || canView;
+  byId("cloud-controls").hidden = !cloudMode || !canView;
+  document.querySelector("nav").hidden = !canView;
+
+  for (const link of document.querySelectorAll("[data-page]")) {
+    if (link.dataset.page === page) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  }
+
+  message("notice", storageError);
+  if (page === "library-activity" && canView) loadClearanceHistory();
+  if (page === "settings" && canView) {
+    byId("settings-email").textContent = staff?.email ?? "";
+    byId("settings-account").hidden = !staff?.email;
+    byId("library-integration-title").closest("section").hidden = !cloudMode || !staff;
+  }
+}
+
+function activeStudents() {
+  return records.filter((student) => !student.deletedAt);
+}
+
+function clearance(student) {
+  return student.clearance ?? "Pending";
+}
+
+function badge(status) {
+  const colors = {
+    Enrolled: "good",
+    Cleared: "good",
+    Pending: "waiting",
+    "Not Cleared": "blocked",
+  };
+  const label = document.createElement("span");
+  label.className = "badge";
+  if (colors[status]) label.classList.add(colors[status]);
+  label.textContent = status;
+  return label;
+}
+
+function actionButton(label, student, action) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "secondary";
+  button.textContent = label;
+  button.setAttribute("aria-label", `${label} ${student.name}`);
+  button.addEventListener("click", () => {
+    if (!busy) action(student);
+  });
+  return button;
+}
+
+const clearancePreferenceKey = "sinag-clearance-notifications";
+const clearanceToggle = byId("clearance-notifications");
+const clearanceTimestamp = new Intl.DateTimeFormat("en-PH", {
+  timeZone: "Asia/Manila", dateStyle: "medium", timeStyle: "short",
+});
+let previousClearances = null;
+
+try {
+  clearanceToggle.checked = localStorage.getItem(clearancePreferenceKey) === "on";
+} catch {
+  clearanceToggle.checked = false;
+}
+
+clearanceToggle.addEventListener("change", () => {
+  if (!clearanceToggle.checked) message("clearance-alert", "");
+
+  try {
+    localStorage.setItem(clearancePreferenceKey, clearanceToggle.checked ? "on" : "off");
+    message("clearance-preference-message", "");
+  } catch {
+    message("clearance-preference-message", "This preference applies until you close the tab.");
+  }
+});
+
+let historyRequest = 0;
+
+async function loadClearanceHistory() {
+  if (!cloud || !staff) {
+    message("clearance-history-status", "Sign in to view clearance activity.");
+    return;
+  }
+
+  const request = ++historyRequest;
+  const session = staff;
+  const rows = byId("clearance-history-rows");
+  rows.replaceChildren();
+  message("clearance-history-status", "Loading clearance activity...");
+
+  try {
+    const { data, error } = await cloud.client.from("clearance_activity")
+      .select("student_number,previous_status,new_status,changed_at,source")
+      .order("id", { ascending: false })
+      .limit(50);
+
+    if (request !== historyRequest || staff !== session ||
+        location.hash !== "#library-activity") return;
+    if (error) throw error;
+
+    rows.replaceChildren(...data.map((entry) => {
+      const row = document.createElement("tr");
+      const values = [
+        entry.student_number,
+        entry.previous_status,
+        entry.new_status,
+        clearanceTimestamp.format(new Date(entry.changed_at)) + " PHT",
+        entry.source,
+      ];
+      for (const value of values) row.insertCell().textContent = value;
+      return row;
+    }));
+
+    message("clearance-history-status", data.length
+      ? `Showing ${data.length} recent clearance changes.`
+      : "No clearance changes recorded yet.");
+  } catch {
+    if (request === historyRequest && staff === session &&
+        location.hash === "#library-activity") {
+      message("clearance-history-status", "Could not load activity. Go back to Settings and reopen Library Integration.");
+    }
+  }
+}
+
+
+function updateLibraryIntegration(students) {
+  if (!cloudMode || !staff) {
+    previousClearances = null;
+    historyRequest += 1;
+
+
+    byId("clearance-history-rows").replaceChildren();
+    message("clearance-history-status", "");
+    message("clearance-alert", "");
+    return;
+  }
+
+  const current = new Map();
+  let latest = null;
+  let changed = 0;
+
+  for (const student of students) {
+    const status = clearance(student);
+    current.set(student.id, status);
+
+    if (previousClearances?.has(student.id) && previousClearances.get(student.id) !== status) {
+      changed += 1;
+    }
+
+    const timestamp = Date.parse(student.clearanceUpdatedAt);
+    if (Number.isFinite(timestamp) && (latest === null || timestamp > latest)) {
+      latest = timestamp;
+    }
+  }
+
+  previousClearances = current;
+  byId("library-last-update").textContent = latest === null
+    ? "No clearance updates yet."
+    : clearanceTimestamp.format(latest) + " PHT";
+
+  if (clearanceToggle.checked && changed > 0) {
+    message("clearance-alert", changed === 1
+      ? "Library clearance changed for 1 student."
+      : `Library clearance changed for ${changed} students.`);
+  }
+}
+
+
+function render() {
+  const students = activeStudents();
+  updateLibraryIntegration(students);
+  byId("total").textContent = students.length;
+  byId("enrolled").textContent = students.filter(
+    (student) => student.status === "Enrolled"
+  ).length;
+
+  for (const status of clearanceStatuses) {
+    byId(status.replace(" ", "-")).textContent = students.filter(
+      (student) => clearance(student) === status
+    ).length;
+  }
+
+  const rows = students.map((student) => {
+    const row = document.createElement("tr");
+    for (const [key] of fields) {
+      const cell = row.insertCell();
+      if (key === "status") cell.append(badge(student.status));
+      else cell.textContent = studentFieldLabel(student, key);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "row-actions";
+    actions.append(
+      actionButton("View", student, viewStudent),
+      actionButton("Edit", student, openEditor),
+      actionButton("Remove", student, requestRemove)
+    );
+    row.insertCell().append(actions);
+    return row;
+  });
+
+  byId("student-rows").replaceChildren(...rows);
+  byId("student-empty").hidden = students.length > 0;
+  renderClearance();
+}
+
+function selectedClearanceStatus() {
+  const [page, params] = location.hash.slice(1).split("?");
+  if (page !== "clearance") return "";
+  const status = new URLSearchParams(params).get("status");
+  return clearanceStatuses.includes(status) ? status : "";
+}
+
+function renderClearance() {
+  const query = byId("clearance-search").value.trim().toLowerCase();
+  const status = selectedClearanceStatus();
+  filterSummary.hidden = !status;
+  filterLabel.textContent = status ? `Showing: ${status}` : "";
+
+  const matches = activeStudents().filter((student) => {
+    const matchesStatus = !status || clearance(student) === status;
+    const matchesSearch = !query ||
+      student.studentId.toLowerCase() === query ||
+      student.name.toLowerCase().includes(query);
+    return matchesStatus && matchesSearch;
+  });
+
+  const rows = matches.map((student) => {
+    const row = document.createElement("tr");
+    row.insertCell().textContent = student.studentId;
+    row.insertCell().textContent = student.name;
+    row.insertCell().append(badge(clearance(student)));
+    return row;
+  });
+
+  byId("clearance-rows").replaceChildren(...rows);
+  byId("clearance-empty").hidden = matches.length > 0;
+}
+
+function studentFieldLabel(student, key) {
+  if (key !== "course") return student[key];
+
+  const courseCode = savedCourseOption(student.course);
+  const options = form.elements.namedItem("course").options;
+  const course = Array.from(options).find(
+    (option) => courseCode && option.value === courseCode
+  );
+
+  return course?.textContent ?? student.course;
+}
+
+
+function viewStudent(student) {
+  const details = byId("student-details");
+  details.replaceChildren();
+
+  for (const [key, label] of fields) {
+    const term = document.createElement("dt");
+    const value = document.createElement("dd");
+    term.textContent = label;
+    value.textContent = studentFieldLabel(student, key);
+    details.append(term, value);
+  }
+
+  byId("details").showModal();
+}
+
+function savedCourseOption(course) {
+  const code = course.trim().toUpperCase();
+  const courses = new Map([
+    ["IT", "IT"], ["BSIT", "IT"],
+    ["CS", "CS"], ["BSCS", "CS"],
+    ["HM", "HM"], ["BSHM", "HM"],
+    ["PSYCH", "Psych"], ["BSPSYCH", "Psych"], ["PSYCHOLOGY", "Psych"],
+    ["CIVIL ENGINEERING", "Civil Engineering"], ["BSCE", "Civil Engineering"],
+  ]);
+  return courses.get(code) ?? "";
+}
+
+
+function openEditor(student = null) {
+  editing = student;
+  form.reset();
+  message("form-error", "");
+  byId("editor-title").textContent = student ? "Edit student" : "Add student";
+
+  if (student) {
+    for (const [key] of fields) {
+      form.elements.namedItem(key).value = key === "course"
+        ? savedCourseOption(student.course)
+        : student[key];
+    }
+  }
+
+  byId("editor").showModal();
+}
+
+function requestRemove(student) {
+  removing = student;
+  byId("delete-message").textContent =
+    `${student.name} will be removed from the active list. The saved record will be retained.`;
+  byId("delete-dialog").showModal();
+}
+
+function readStudent() {
+  const values = new FormData(form);
+
+  const student = {
+    name: String(values.get("name") ?? "").trim(),
+    course: String(values.get("course") ?? "").trim(),
+    year: Number(values.get("year")),
+    contact: String(values.get("contact") ?? ""),
+    status: String(values.get("status") ?? "").trim(),
+  };
+
+  if (!student.name || student.name.length > 120) {
+    throw new Error("Enter a full name of up to 120 characters.");
+  }
+
+  if (!["IT", "CS", "HM", "Psych", "Civil Engineering"].includes(student.course)) {
+    throw new Error("Choose a course from the list.");
+  }
+
+  if (!Number.isInteger(student.year) || student.year < 1 || student.year > 6) {
+    throw new Error("Choose a year level from the list.");
+  }
+
+  if (!enrollmentStatuses.includes(student.status)) {
+    throw new Error("Choose a valid enrollment status.");
+  }
+
+  if (!/^[0-9]{11}$/.test(student.contact)) {
+    throw new Error("Contact number must be exactly 11 digits.");
+  }
+
+
+  if (editing) {
+    student.studentId = editing.studentId;
+  } else if (!cloudMode) {
+    const usedNumbers = new Set(
+      records.map((record) => record.studentId.trim().toLowerCase())
+    );
+    let number = records.reduce((max, record) => Math.max(max, record.id), 0) + 1;
+
+    while (usedNumbers.has(`sims-${number}`)) {
+      number += 1;
+    }
+
+    student.studentId = `SIMS-${number}`;
+  }
+
+  return student;
+}
+
+function cloudError(error) {
+  if (error.code === "23505") return "This student ID is already in use, including removed records.";
+  if (["23514", "23502", "22003", "22P02"].includes(error.code)) {
+    return "The database rejected a field. Review the student information.";
+  }
+  if (error.code === "SIMS_CONFLICT") return "This record changed. Refresh records and try again.";
+  if (error.code === "42501" || [401, 403].includes(error.status)) {
+    return "Your session or staff access is unavailable. Sign out and sign in again.";
+  }
+  return "Could not complete the request. Check your connection and refresh before retrying.";
+}
+
+async function runAction(task, onError) {
+  if (busy) return;
+  busy = true;
+
+  const controls = document.querySelectorAll(
+    "button[type='submit'], #sign-out, #refresh-records, #confirm-delete"
+  );
+  for (const button of controls) button.disabled = true;
+
+  try {
+    await task();
+  } catch (error) {
+    onError(error);
+  } finally {
+    busy = false;
+    for (const button of controls) button.disabled = false;
+  }
+}
+
+async function refreshRecords() {
+  const latest = await cloud.listRecords();
+  if (!staff) return;
+  records = latest;
+  render();
+}
+
+async function afterSave(text) {
+  try {
+    if (cloudMode) await refreshRecords();
+  } catch {
+    text += " The list could not refresh. Use Refresh records.";
+  }
+  if (!cloudMode || staff) {
+    const confirmation = byId("student-save-confirmation");
+    byId("student-confirmation-text").textContent = text;
+    message("notice", "");
+    if (!confirmation.open) confirmation.showModal();
+  }
+}
+
+// Match the contact field's typing and paste rules to its save validation.
+{
+  const contact = form.elements.namedItem("contact");
+  const contactInputError = "Contact number accepts up to 11 digits only.";
+
+  function checkContactInsertion(event, inserted) {
+    const start = contact.selectionStart ?? contact.value.length;
+    const end = contact.selectionEnd ?? start;
+    const result = contact.value.slice(0, start) + inserted + contact.value.slice(end);
+
+    if (!/^[0-9]{0,11}$/.test(result)) {
+      event.preventDefault();
+      message("form-error", contactInputError);
+    }
+  }
+
+  contact.addEventListener("beforeinput", (event) => {
+    if (event.cancelable && event.inputType.startsWith("insert") && event.data !== null) {
+      checkContactInsertion(event, event.data);
+    }
+  });
+
+  contact.addEventListener("paste", (event) => {
+    if (event.clipboardData) {
+      checkContactInsertion(event, event.clipboardData.getData("text/plain"));
+    }
+  });
+
+  contact.addEventListener("input", () => {
+    if (byId("form-error").textContent === contactInputError) {
+      message("form-error", "");
+    }
+  });
+}
+
+
+form.addEventListener("submit", (event) => {
+  event.preventDefault();
+  if (busy || (cloudMode && !staff)) return;
+  message("form-error", "");
+
+  let student;
+  try {
+    student = readStudent();
+  } catch (error) {
+    message("form-error", error.message);
+    return;
+  }
+
+  const existing = editing;
+  runAction(async () => {
+    if (cloudMode) {
+      await cloud.saveStudent(student, existing);
+    } else if (existing) {
+      saveDemo(records.map((item) =>
+        item.id === existing.id ? { ...item, ...student } : item
+      ));
+    } else {
+      const id = records.reduce((max, item) => Math.max(max, item.id), 0) + 1;
+      saveDemo([...records, { ...student, id, clearance: null, deletedAt: null }]);
+    }
+
+    byId("editor").close();
+    byId("add-student").focus();
+    await afterSave(existing ? "Student record updated." : "Student record added.");
+  }, (error) => message("form-error", cloudMode ? cloudError(error) : error.message));
+});
+
+byId("confirm-delete").addEventListener("click", () => {
+  if (!removing || busy || (cloudMode && !staff)) return;
+  const student = removing;
+  byId("delete-dialog").close();
+  byId("add-student").focus();
+
+  runAction(async () => {
+    if (cloudMode) {
+      await cloud.removeStudent(student);
+    } else {
+      const deletedAt = new Date().toISOString();
+      saveDemo(records.map((item) =>
+        item.id === student.id ? { ...item, deletedAt } : item
+      ));
+    }
+    await afterSave("Student record removed from the active list.");
+  }, (error) => message("notice", cloudMode ? cloudError(error) : error.message));
+});
+
+function clearSession() {
+  staff = null;
+  records = [];
+  for (const dialog of document.querySelectorAll("dialog[open]")) dialog.close();
+  render();
+  showPage();
+}
+
+async function loadStaffSession() {
+  const user = await cloud.staffUser();
+  if (!user) return;
+  const latest = await cloud.listRecords();
+  staff = user;
+  records = latest;
+  render();
+  showPage();
+}
+
+async function startCloud() {
+  byId("app-mode").textContent = "Supabase";
+  showPage();
+
+  const signInButton = authForm.querySelector("button[type='submit']");
+  signInButton.disabled = true;
+
+  try {
+    cloud = await SimsCloud.connect(config);
+  } catch {
+    message("auth-error", "Could not connect to Supabase. Check config.js and your internet connection.");
+    return;
+  }
+
+  cloud.client.auth.onAuthStateChange((event) => {
+    if (event === "SIGNED_OUT") clearSession();
+  });
+
+  try {
+    await loadStaffSession();
+  } catch {
+    message("auth-error", "Could not load your session. Try signing in again.");
+  } finally {
+    signInButton.disabled = false;
+  }
+
+  authForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const values = new FormData(authForm);
+    message("auth-error", "");
+    runAction(async () => {
+      await cloud.signIn(
+        String(values.get("email")).trim(),
+        String(values.get("password"))
+      );
+      authForm.reset();
+      await loadStaffSession();
+    }, () => message("auth-error", "Sign-in failed. Check your email, password, and staff access."));
+  });
+
+  byId("refresh-records").addEventListener("click", () => {
+    runAction(async () => {
+      if (!(await cloud.staffUser())) {
+        clearSession();
+        message("auth-error", "Your session ended. Sign in again.");
+        return;
+      }
+      await refreshRecords();
+      if (staff) message("notice", "Student records refreshed.");
+    }, (error) => message("notice", cloudError(error)));
+  });
+
+  byId("sign-out").addEventListener("click", () => {
+    runAction(async () => {
+      await cloud.signOut();
+      clearSession();
+      message("auth-error", "");
+    }, (error) => message("notice", cloudError(error)));
+  });
+}
+
+const filterSummary = document.createElement("p");
+filterSummary.hidden = true;
+filterSummary.style.marginTop = "0.6rem";
+
+const filterLabel = document.createElement("span");
+filterLabel.setAttribute("role", "status");
+
+const clearFilter = document.createElement("a");
+clearFilter.href = "#clearance";
+clearFilter.textContent = "Clear filter";
+filterSummary.append(filterLabel, " · ", clearFilter);
+byId("clearance-search").after(filterSummary);
+
+for (const status of clearanceStatuses) {
+  const card = byId(status.replace(" ", "-")).closest("article");
+  const link = document.createElement("a");
+  link.className = "metric-link";
+  link.href = `#clearance?status=${encodeURIComponent(status)}`;
+  link.textContent = "View students";
+  link.setAttribute("aria-label", `View students with ${status} clearance`);
+  link.addEventListener("click", (event) => {
+    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    byId("clearance-search").value = "";
+    if (location.hash === link.hash) renderClearance();
+  });
+  card.append(link);
+}
+
+window.addEventListener("hashchange", () => {
+  showPage();
+  renderClearance();
+  if (location.hash === "#settings" && !byId("settings").hidden) {
+    byId("settings-title").focus();
+  }
+});
+byId("clearance-search").addEventListener("input", renderClearance);
+byId("add-student").addEventListener("click", () => {
+  if (!busy) openEditor();
+});
+
+for (const button of document.querySelectorAll("[data-close]")) {
+  button.addEventListener("click", () => byId(button.dataset.close).close());
+}
+
+
+// Sign-in background and validation
+{
+  const loginForm = document.getElementById("sign-in-form");
+
+  if (loginForm) {
+
+    const email = loginForm.elements.namedItem("email");
+    const password = loginForm.elements.namedItem("password");
+    const loginFields = [email, password];
+    const fieldErrors = new Map();
+
+    for (const field of loginFields) {
+      const error = document.createElement("span");
+      error.id = `login-${field.name}-error`;
+      error.className = "login-field-error";
+      error.hidden = true;
+      field.after(error);
+      field.setAttribute("aria-describedby", error.id);
+      fieldErrors.set(field, error);
+
+      field.addEventListener("input", () => {
+        if (field.validity.valid) showFieldError(field, "");
+      });
+    }
+
+    function showFieldError(field, message) {
+      const error = fieldErrors.get(field);
+      error.textContent = message;
+      error.hidden = !message;
+
+      if (message) field.setAttribute("aria-invalid", "true");
+      else field.removeAttribute("aria-invalid");
+    }
+
+    email.spellcheck = false;
+    loginForm.noValidate = true;
+
+    loginForm.addEventListener("submit", (event) => {
+      document.getElementById("auth-error").hidden = true;
+
+      for (const field of loginFields) showFieldError(field, "");
+
+      const invalidField = loginFields.find((field) => !field.validity.valid);
+      if (!invalidField) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+
+      const message = invalidField === password
+        ? "Enter your password."
+        : email.validity.valueMissing
+          ? "Enter your email address."
+          : "Enter a valid email address.";
+
+      showFieldError(invalidField, message);
+      invalidField.focus();
+    }, true);
+  }
+}
+
+// Sinag logo, dashboard clock, and display settings
+{
+  const sidebar = document.querySelector(".sidebar");
+  const brandIcon = sidebar.querySelector(".brand-icon");
+  const dashboardHeader = document.querySelector("#dashboard .hero header");
+  const signInLogo = document.querySelector("#sign-in .school-seal");
+
+
+  // Reuse the same logo file that already loads on the sign-in page.
+  if (brandIcon && signInLogo) {
+    const logo = document.createElement("img");
+    logo.className = "sidebar-seal";
+    logo.src = signInLogo.src;
+    logo.alt = "";
+    brandIcon.replaceChildren(logo);
+  }
+
+  const clock = document.createElement("time");
+  clock.className = "dashboard-clock";
+  dashboardHeader.append(clock);
+
+  const settingsKey = "sinag-display-settings-v1";
+  const dateFormatter = new Intl.DateTimeFormat("en-PH", {
+    timeZone: "Asia/Manila",
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+
+  let motionEnabled = true;
+
+  try {
+    const saved = JSON.parse(localStorage.getItem(settingsKey) || "{}");
+    motionEnabled = saved?.motionEnabled !== false;
+  } catch {
+    // Use the default settings if browser storage is unavailable.
+  }
+
+  let timeFormatter;
+
+  function updateClock() {
+    const now = new Date();
+    clock.dateTime = now.toISOString();
+    clock.textContent =
+      `${dateFormatter.format(now)} · ${timeFormatter.format(now)}`;
+  }
+
+  function applySettings() {
+    timeFormatter = new Intl.DateTimeFormat("en-PH", {
+      timeZone: "Asia/Manila",
+      hour: "numeric",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    });
+
+    document.documentElement.dataset.sinagMotion =
+      motionEnabled ? "on" : "off";
+
+    updateClock();
+  }
+
+  const settingsForm = byId("display-settings-form");
+  const motion = settingsForm.elements.namedItem("motion");
+  const settingsMessage = byId("settings-message");
+
+  motion.checked = motionEnabled;
+
+  settingsForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    motionEnabled = motion.checked;
+    applySettings();
+
+    try {
+      localStorage.setItem(
+        settingsKey,
+        JSON.stringify({ motionEnabled })
+      );
+      message("settings-message", "Display preferences saved.");
+    } catch {
+      message("settings-message", "Applied for now. This browser could not save your settings.");
+    }
+  });
+
+  applySettings();
+  window.setInterval(updateClock, 1000);
+}
+
+// White sidebar, module icons, and dashboard branding
+{
+  const sidebar = document.querySelector(".sidebar");
+  const dashboardHeader = document.querySelector("#dashboard .hero header");
+  const subtitle = sidebar.querySelector(".brand small");
+  const sidebarFooter = sidebar.querySelector(".demo");
+  const settings = sidebar.querySelector(".settings-button");
+
+  if (subtitle && dashboardHeader) {
+    subtitle.classList.add("dashboard-system-name");
+    dashboardHeader.prepend(subtitle);
+  }
+
+  if (settings && sidebarFooter) {
+    sidebarFooter.prepend(settings);
+  }
+
+
+}
+
+// Restore the navy sidebar and update its icons.
+{
+  const sidebar = document.querySelector(".sidebar");
+  const iconPaths = {
+    dashboard:
+      '<rect x="3" y="3" width="7" height="7" rx="1"/>' +
+      '<rect x="14" y="3" width="7" height="7" rx="1"/>' +
+      '<rect x="3" y="14" width="7" height="7" rx="1"/>' +
+      '<rect x="14" y="14" width="7" height="7" rx="1"/>',
+    students:
+      '<rect x="3" y="5" width="18" height="14" rx="2"/>' +
+      '<circle cx="8.5" cy="10" r="1.5"/>' +
+      '<path d="M6 15c.5-2 4.5-2 5 0m3-5h4m-4 4h4"/>',
+    clearance:
+      '<path d="M7 3h8l4 4v12a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/>' +
+      '<path d="M14 3v5h5m-10 6 2 2 4-4"/>',
+    refresh:
+      '<path d="M20 7v5h-5M4 17v-5h5"/>' +
+      '<path d="M6.1 7a7 7 0 0 1 11.7-1L20 9M4 15l2.2 3A7 7 0 0 0 18 17"/>',
+    settings:
+      '<path d="M4 6h5m4 0h7M4 12h9m4 0h3M4 18h2m4 0h10"/>' +
+      '<circle cx="11" cy="6" r="2"/>' +
+      '<circle cx="15" cy="12" r="2"/>' +
+      '<circle cx="8" cy="18" r="2"/>',
+    signOut:
+      '<path d="M10 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h5"/>' +
+      '<path d="M9 12h11m-4-4 4 4-4 4"/>',
+  };
+
+  function addSidebarIcon(control, iconName) {
+    if (!control) return;
+
+    const icon = document.createElement("span");
+    icon.className = "sidebar-action-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.innerHTML = `
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"
+           focusable="false">
+        ${iconPaths[iconName]}
+      </svg>
+    `;
+
+    const oldIcon = control.querySelector(".sidebar-module-icon");
+    if (oldIcon) oldIcon.replaceWith(icon);
+    else control.prepend(icon);
+  }
+
+  for (const link of sidebar.querySelectorAll("nav [data-page]")) {
+    if (iconPaths[link.dataset.page]) {
+      addSidebarIcon(link, link.dataset.page);
+    }
+  }
+
+  const refresh = sidebar.querySelector("#refresh-records");
+  const settings = sidebar.querySelector(".settings-button");
+  const signOut = sidebar.querySelector("#sign-out");
+  const cloudControls = sidebar.querySelector("#cloud-controls");
+
+  addSidebarIcon(refresh, "refresh");
+  addSidebarIcon(settings, "settings");
+  addSidebarIcon(signOut, "signOut");
+
+  // Keep keyboard navigation in the same order as the buttons on screen.
+  if (cloudControls && settings && signOut) {
+    if (window.SIMS_CONFIG?.supabaseUrl || window.SIMS_CONFIG?.supabasePublishableKey) {
+      cloudControls.insertBefore(settings, signOut);
+    }
+  }
+
+}
+
+// Automatically sync student records and library clearance.
+{
+  if (cloudMode) {
+    const refreshButton = document.getElementById("refresh-records");
+    if (refreshButton) refreshButton.hidden = true;
+
+    async function syncStudentRecords() {
+      if (
+        !staff ||
+        !cloud ||
+        busy ||
+        document.hidden ||
+        document.querySelector("dialog[open]")
+      ) {
+        return;
+      }
+
+      const currentSession = staff;
+      const currentRecords = records;
+
+      try {
+        const latestRecords = await cloud.listRecords();
+
+        // Skip a response if a save or sign-out happened while it was loading.
+        if (staff !== currentSession || records !== currentRecords || busy) {
+          return;
+        }
+
+        if (JSON.stringify(latestRecords) !== JSON.stringify(currentRecords)) {
+          records = latestRecords;
+          render();
+        }
+      } catch {
+        // Keep showing the last loaded records. The next check will retry.
+      }
+    }
+
+    let syncInProgress = false;
+
+    async function checkForRecordUpdates() {
+      if (syncInProgress) return;
+      syncInProgress = true;
+
+      try {
+        await syncStudentRecords();
+      } finally {
+        syncInProgress = false;
+      }
+    }
+
+    window.setInterval(checkForRecordUpdates, 15000);
+    document.addEventListener("visibilitychange", () => {
+      if (!document.hidden) checkForRecordUpdates();
+    });
+  }
+}
+
+// Change password for the signed-in admin.
+{
+  const changeButton = byId("change-password");
+  const passwordDialog = byId("change-password-dialog");
+
+  if (changeButton && passwordDialog) {
+
+    const passwordForm = passwordDialog.querySelector("form");
+    const errorMessage = passwordForm.querySelector(".error");
+    const successMessage = passwordForm.querySelector(".password-success");
+    const submitButton = passwordForm.querySelector('[type="submit"]');
+    const closeButton = passwordForm.querySelector("[data-close-password]");
+    let savingPassword = false;
+
+    function showPasswordError(text) {
+      errorMessage.textContent = text;
+      errorMessage.hidden = !text;
+    }
+
+    changeButton.addEventListener("click", () => {
+      if (!staff?.email || !cloud) return;
+
+      passwordForm.reset();
+      showPasswordError("");
+      successMessage.hidden = true;
+      submitButton.hidden = false;
+      passwordDialog.showModal();
+    });
+
+    closeButton.addEventListener("click", () => passwordDialog.close());
+
+    passwordDialog.addEventListener("cancel", (event) => {
+      if (savingPassword) event.preventDefault();
+    });
+
+    passwordDialog.addEventListener("close", () => passwordForm.reset());
+
+    passwordForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if (savingPassword) return;
+
+      const email = staff?.email;
+      const fields = new FormData(passwordForm);
+      const currentPassword = fields.get("currentPassword");
+      const newPassword = fields.get("newPassword");
+      const confirmPassword = fields.get("confirmPassword");
+      showPasswordError("");
+
+      if (!email || !cloud) {
+        showPasswordError("Your session ended. Sign in again.");
+        return;
+      }
+
+      if (newPassword !== confirmPassword) {
+        showPasswordError("The new passwords do not match.");
+        passwordForm.elements.namedItem("confirmPassword").focus();
+        return;
+      }
+
+      if (newPassword === currentPassword) {
+        showPasswordError("Choose a different new password.");
+        return;
+      }
+
+      savingPassword = true;
+      submitButton.disabled = true;
+      closeButton.disabled = true;
+
+      try {
+        await cloud.signIn(email, currentPassword);
+
+        const { error } = await cloud.client.auth.updateUser({
+          password: newPassword,
+        });
+
+        if (error) throw error;
+
+        passwordForm.reset();
+        submitButton.hidden = true;
+        successMessage.textContent =
+          "Password updated. Use the new password the next time you sign in.";
+        successMessage.hidden = false;
+        closeButton.focus();
+      } catch (error) {
+        if (error.code === "invalid_credentials") {
+          showPasswordError("The current password is incorrect.");
+        } else if (error.code === "weak_password") {
+          showPasswordError("Choose a stronger password.");
+        } else {
+          showPasswordError(
+            "Could not update your password. Try signing in again before retrying."
+          );
+        }
+      } finally {
+        savingPassword = false;
+        submitButton.disabled = false;
+        closeButton.disabled = false;
+      }
+    });
+  }
+}
+
+// Student records pagination and display preference.
+{
+  const studentRows = document.getElementById("student-rows");
+  const tableCard = studentRows?.closest(".table-card");
+  const pager = tableCard?.querySelector(".student-records-pager");
+
+  if (studentRows && pager) {
+    const storageKey = "sinag-student-rows-per-page";
+    const pageSizes = [10, 25, 50];
+    let rowsPerPage = 10;
+    let page = 1;
+
+    try {
+      const saved = Number(localStorage.getItem(storageKey));
+      if (pageSizes.includes(saved)) rowsPerPage = saved;
+    } catch {
+      // Use the default when browser storage is unavailable.
+    }
+
+    const pageSizeSelect = pager.querySelector("[name=studentRowsPerPage]");
+    pageSizeSelect.value = String(rowsPerPage);
+
+    const summary = pager.querySelector("[data-page-summary]");
+    const previous = pager.querySelector("[data-previous]");
+    const next = pager.querySelector("[data-next]");
+
+    function showPageOfStudents() {
+      const rows = Array.from(studentRows.rows);
+      const pageCount = Math.max(1, Math.ceil(rows.length / rowsPerPage));
+      page = Math.min(page, pageCount);
+
+      const start = (page - 1) * rowsPerPage;
+      const end = Math.min(start + rowsPerPage, rows.length);
+
+      rows.forEach((row, index) => {
+        row.hidden = index < start || index >= end;
+      });
+
+      pager.hidden = rows.length === 0;
+      summary.textContent = rows.length
+        ? `Showing ${start + 1}–${end} of ${rows.length} students`
+        : "";
+
+      previous.disabled = page <= 1;
+      next.disabled = page >= pageCount;
+    }
+
+    previous.addEventListener("click", () => {
+      if (page > 1) {
+        page -= 1;
+        showPageOfStudents();
+      }
+    });
+
+    next.addEventListener("click", () => {
+      if (!next.disabled) {
+        page += 1;
+        showPageOfStudents();
+      }
+    });
+
+    pageSizeSelect.addEventListener("change", () => {
+      const selected = Number(pageSizeSelect.value);
+      if (!pageSizes.includes(selected)) return;
+
+      if (selected !== rowsPerPage) {
+        rowsPerPage = selected;
+        page = 1;
+        showPageOfStudents();
+      }
+
+      try {
+        localStorage.setItem(storageKey, String(rowsPerPage));
+      } catch {
+        // Keep the selection for this tab even if it cannot be saved.
+      }
+    });
+
+    // Reapply pagination after an add, edit, remove, or automatic sync.
+    new MutationObserver(showPageOfStudents).observe(studentRows, {
+      childList: true,
+    });
+
+    showPageOfStudents();
+  }
+}
+
+if (cloudMode) {
+  startCloud();
+} else {
+  records = loadDemo();
+  showPage();
+  render();
+}
+
+
+// Data privacy acknowledgement on sign-in.
+{
+  const login = document.getElementById("sign-in-form");
+  const agreement = document.getElementById("privacy-agreement");
+  const error = document.getElementById("privacy-agreement-error");
+  const policy = document.getElementById("privacy-policy-dialog");
+
+  document.getElementById("open-privacy-policy").addEventListener("click", () => {
+    policy.showModal();
+  });
+
+  function clearPrivacyError() {
+    agreement.removeAttribute("aria-invalid");
+    error.textContent = "";
+    error.hidden = true;
+  }
+
+  agreement.addEventListener("change", clearPrivacyError);
+  login.addEventListener("reset", clearPrivacyError);
+
+  login.addEventListener("submit", (event) => {
+    if (agreement.checked) return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    agreement.setAttribute("aria-invalid", "true");
+    error.textContent = "Agree to the Data Privacy Policy before signing in.";
+    error.hidden = false;
+    agreement.focus();
+  }, true);
+}

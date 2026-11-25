@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sinag University | Student Information System</title>
+  <link rel="stylesheet" href="./style.css">
+
+
+  <script src="./config.js" defer></script>
+  <script src="./cloud.js" defer></script>
+  <script src="./script.js" defer></script>
+</head>
+<body>
+  <aside class="sidebar">
+    <div class="brand">
+      <span class="brand-icon" aria-hidden="true">S</span>
+      <div>
+        <strong>Sinag University</strong>
+        <small>Student Information System</small>
+      </div>
+    </div>
+
+    <nav aria-label="Main navigation">
+      <a href="#dashboard" data-page="dashboard">Dashboard</a>
+      <a href="#students" data-page="students">Student records</a>
+      <a href="#clearance" data-page="clearance">Library clearance</a>
+    </nav>
+
+    <div class="demo">
+      <a href="#settings" class="settings-button button" data-page="settings">Settings</a>
+      <span id="app-mode">Local demo</span>
+      <div id="cloud-controls" hidden>
+        <button type="button" id="refresh-records">Refresh records</button>
+        <button type="button" id="sign-out" class="secondary">Sign out</button>
+      </div>
+    </div>
+  </aside>
+
+  <main>
+    <p id="notice" role="status" hidden></p>
+    <p id="clearance-alert" role="status" hidden></p>
+
+    <section id="sign-in" aria-labelledby="sign-in-title" hidden>
+      <div class="seal-panel">
+        <img class="school-seal" src="./sinag.logo.jpg.jpg"
+             alt="Sinag University seal">
+      </div>
+
+      <div class="login-panel">
+        <header>
+          <h1 id="sign-in-title">Welcome to Sinag University</h1>
+        </header>
+
+        <form id="sign-in-form" class="auth-card">
+          <label>
+            Email
+            <input name="email" type="email" autocomplete="username" required>
+          </label>
+          <label>
+            Password
+            <input name="password" type="password" autocomplete="current-password" required>
+          </label>
+          <div class="privacy-agreement-row">
+            <label for="privacy-agreement">
+              <input id="privacy-agreement" name="privacyAgreement" type="checkbox"
+                     aria-describedby="privacy-agreement-error" required>
+              I agree to the
+            </label>
+            <button type="button" id="open-privacy-policy" class="privacy-policy-link"
+                    aria-haspopup="dialog" aria-controls="privacy-policy-dialog">
+              Data Privacy Policy
+            </button>
+          </div>
+          <p id="privacy-agreement-error" class="error" role="alert" hidden></p>
+          <p id="auth-error" class="error" role="alert" hidden></p>
+          <div class="actions">
+            <button type="submit">Sign in</button>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <section id="dashboard" aria-labelledby="dashboard-title">
+      <div class="hero">
+        <header>
+          <h1 id="dashboard-title">Dashboard</h1>
+          <p>Monitor student enrollment and library clearance.</p>
+        </header>
+        <a class="button hero-button" href="#students">Manage students</a>
+      </div>
+
+      <h2>Student overview</h2>
+      <div class="metrics overview">
+        <article><span>Total students</span><strong id="total">0</strong></article>
+        <article><span>Enrolled students</span><strong id="enrolled">0</strong></article>
+      </div>
+
+      <h2>Library clearance</h2>
+      <div class="metrics">
+        <article class="pending"><span>Pending</span><strong id="Pending">0</strong></article>
+        <article class="cleared"><span>Cleared</span><strong id="Cleared">0</strong></article>
+        <article class="not-cleared"><span>Not Cleared</span><strong id="Not-Cleared">0</strong></article>
+      </div>
+    </section>
+
+    <section id="students" aria-labelledby="students-title" hidden>
+      <header class="page-header">
+        <div>
+          <h1 id="students-title">Student records</h1>
+          <p>View and manage active student records.</p>
+        </div>
+        <button type="button" id="add-student">Add student</button>
+      </header>
+
+      <div class="table-card">
+        <div class="table-scroll">
+          <table aria-label="Active student records">
+            <thead>
+              <tr>
+                <th scope="col">Student number</th>
+                <th scope="col">Name</th>
+                <th scope="col">Course</th>
+                <th scope="col">Year level</th>
+                <th scope="col">Contact number</th>
+                <th scope="col">Status</th>
+                <th scope="col">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="student-rows"></tbody>
+          </table>
+        </div>
+        <p id="student-empty" class="empty" hidden>No active student records.</p>
+        <div class="student-records-pager" role="group" aria-label="Student records pagination" hidden>
+          <p data-page-summary role="status"></p>
+          <label class="rows-per-page">Rows per page
+            <select name="studentRowsPerPage">
+              <option value="10">10</option>
+              <option value="25">25</option>
+              <option value="50">50</option>
+            </select>
+          </label>
+          <div>
+            <button type="button" class="secondary" data-previous>Previous</button>
+            <button type="button" class="secondary" data-next>Next</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="clearance" aria-labelledby="clearance-title" hidden>
+      <header class="page-header">
+        <div>
+          <h1 id="clearance-title">Library clearance</h1>
+          <p>Find a student's current clearance status.</p>
+        </div>
+      </header>
+
+      <div class="table-card">
+        <div class="search">
+          <label for="clearance-search">Search by student number or name</label>
+          <input type="search" id="clearance-search" placeholder="e.g. 202614078 or Santos">
+        </div>
+        <div class="table-scroll">
+          <table aria-label="Library clearance results">
+            <thead>
+              <tr>
+                <th scope="col">Student number</th>
+                <th scope="col">Name</th>
+                <th scope="col">Clearance status</th>
+              </tr>
+            </thead>
+            <tbody id="clearance-rows"></tbody>
+          </table>
+        </div>
+        <p id="clearance-empty" class="empty" role="status" hidden>No matching student records.</p>
+      </div>
+    </section>
+    <section id="settings" aria-labelledby="settings-title" hidden>
+      <header class="page-header">
+        <div><h1 id="settings-title" tabindex="-1">Settings</h1></div>
+      </header>
+      <div class="settings-grid">
+        <div class="settings-column">
+          <section class="settings-card" id="settings-account" aria-labelledby="account-title" hidden>
+            <h2 id="account-title">Account Management</h2>
+            <dl>
+              <dt>Email</dt><dd id="settings-email"></dd>
+              
+            </dl>
+            <div class="actions"><button type="button" id="change-password" class="secondary">Change password</button></div>
+          </section>
+
+        </div>
+        <div class="settings-column">
+          <section class="settings-card" aria-labelledby="preferences-title">
+            <h2 id="preferences-title">Appearance</h2>
+            <form id="display-settings-form">
+              
+              <label class="motion-option">
+                <input name="motion" type="checkbox">
+                Animate sign-in background
+              </label>
+              <p id="settings-message" role="status" hidden></p>
+              <div class="actions"><button type="submit">Save settings</button></div>
+            </form>
+          </section>
+          <section class="settings-card" aria-labelledby="library-integration-title" hidden>
+            <h2 id="library-integration-title"><a class="button secondary" href="#library-activity">Library Integration</a></h2>
+            <dl>
+              <dt>Latest clearance update</dt>
+              <dd id="library-last-update">No clearance updates yet.</dd>
+            </dl>
+            <label class="motion-option">
+              <input id="clearance-notifications" type="checkbox">
+              Notify me when clearance changes
+            </label>
+            <p id="clearance-preference-message" role="status" hidden></p>
+            
+          </section>
+        </div>
+      </div>
+    </section>
+    <section id="library-activity" aria-labelledby="library-activity-title" hidden>
+      <header class="page-header">
+        <h1 id="library-activity-title">Clearance Activity</h1>
+        <a class="button secondary" href="#settings">Back to Settings</a>
+      </header>
+      <div id="clearance-history" class="table-card">
+              
+              <p id="clearance-history-status" role="status"></p>
+              <div class="table-scroll">
+                <table aria-label="Clearance activity">
+                  <thead>
+                    <tr>
+                      <th scope="col">Student number</th>
+                      <th scope="col">Previous status</th>
+                      <th scope="col">New status</th>
+                      <th scope="col">Date and time</th>
+                      <th scope="col">Source</th>
+                    </tr>
+                  </thead>
+                  <tbody id="clearance-history-rows"></tbody>
+                </table>
+              </div>
+            </div>
+    </section>
+  </main>
+
+  <dialog id="editor" aria-labelledby="editor-title">
+    <form id="student-form">
+      <h2 id="editor-title">Add student</h2>
+      <div class="fields">
+        <label>
+          Student number
+          <input name="studentId" placeholder="Assigned on save" readonly>
+        </label>
+        <label>
+          Full name
+          <input name="name" required maxlength="120">
+        </label>
+        <label>
+          Course
+          <select name="course" required>
+            <option value="" selected disabled>Select course</option>
+            <option value="IT">Bachelor of Science in Information Technology</option>
+            <option value="CS">Bachelor of Science in Computer Science</option>
+            <option value="HM">Bachelor of Science in Hospitality Management</option>
+            <option value="Psych">Bachelor of Science in Psychology</option>
+            <option value="Civil Engineering">Bachelor of Science in Civil Engineering</option>
+          </select>
+        </label>
+        <label>
+          Year level
+          <select name="year" required>
+            <option value="" selected disabled>Select year level</option>
+            <option value="1">First Year</option>
+            <option value="2">Second Year</option>
+            <option value="3">Third Year</option>
+            <option value="4">Fourth Year</option>
+            <option value="5">Fifth Year</option>
+            <option value="6">Irregular</option>
+          </select>
+        </label>
+        <label>
+          Contact number
+          <input name="contact" type="tel" inputmode="numeric" autocomplete="tel-national" maxlength="11" required>
+        </label>
+        <label>
+          Enrollment status
+          <select name="status">
+            <option>Enrolled</option>
+            <option>Not Enrolled</option>
+          </select>
+        </label>
+      </div>
+      <p id="form-error" class="error" role="alert" hidden></p>
+      <div class="actions">
+        <button type="button" class="secondary" data-close="editor">Cancel</button>
+        <button type="submit">Save student</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="details" aria-labelledby="details-title">
+    <h2 id="details-title">Student details</h2>
+    <dl id="student-details"></dl>
+    <div class="actions">
+      <button type="button" class="secondary" data-close="details">Close</button>
+    </div>
+  </dialog>
+
+  <dialog id="delete-dialog" aria-labelledby="delete-title">
+    <h2 id="delete-title">Remove student record?</h2>
+    <p id="delete-message"></p>
+    <div class="actions">
+      <button type="button" class="secondary" autofocus data-close="delete-dialog">Cancel</button>
+      <button type="button" id="confirm-delete" class="danger">Remove student</button>
+    </div>
+  </dialog>
+  <dialog id="change-password-dialog" aria-labelledby="change-password-title">
+      <form>
+        <h2 id="change-password-title">Change password</h2>
+
+        <div class="fields">
+          <label>
+            Current password
+            <input name="currentPassword" type="password"
+                   autocomplete="current-password" required>
+          </label>
+          <label>
+            New password
+            <input name="newPassword" type="password"
+                   autocomplete="new-password" required>
+          </label>
+          <label>
+            Confirm new password
+            <input name="confirmPassword" type="password"
+                   autocomplete="new-password" required>
+          </label>
+        </div>
+
+        <p class="error" role="alert" hidden></p>
+        <p class="password-success" role="status" hidden></p>
+
+        <div class="actions">
+          <button type="button" class="secondary" data-close-password>Close</button>
+          <button type="submit">Update password</button>
+        </div>
+      </form>
+  </dialog>
+  <dialog id="student-save-confirmation" aria-labelledby="student-confirmation-title"
+          aria-describedby="student-confirmation-text">
+    <form method="dialog">
+      <span class="confirmation-check" aria-hidden="true">✓</span>
+      <h2 id="student-confirmation-title">Success</h2>
+      <p id="student-confirmation-text"></p>
+      <div class="actions"><button type="submit" autofocus>OK</button></div>
+    </form>
+  </dialog>
+  <dialog id="privacy-policy-dialog" aria-labelledby="privacy-policy-title">
+    <form method="dialog">
+      <h2 id="privacy-policy-title">Data Privacy Policy</h2>
+      <div class="privacy-policy-copy">
+        <p>The Sinag University Student Information Management System processes
+          student information to manage records, monitor enrollment, and display
+          library clearance.</p>
+        <p>Student records include the student number, name, course, year level,
+          contact number, and enrollment status. Access to student records is
+          restricted to authorized SIMS users.</p>
+        <p>The Library System uses the student number to verify a student and
+          sends clearance decisions to SIMS.</p>
+        <p>For questions about your information or to request a correction,
+          contact the school office responsible for student records.</p>
+      </div>
+      <div class="actions">
+        <button type="submit" autofocus>Close</button>
+      </div>
+    </form>
+  </dialog>
+</body>
+</html>
