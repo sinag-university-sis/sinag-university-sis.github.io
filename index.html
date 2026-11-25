@@ -373,14 +373,49 @@
         </div>
         <button type="button" id="add-student">Add student</button>
       </header>
-
+<div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,13rem),1fr)); gap:.75rem; margin-block:1rem">
+  <label>Search students
+    <input type="search" id="student-search" placeholder="Student number or name">
+  </label>
+  <label>Course
+    <select id="student-course-filter">
+      <option value="">All courses</option>
+      <option value="IT">Information Technology</option>
+      <option value="CS">Computer Science</option>
+      <option value="HM">Hospitality Management</option>
+      <option value="Psych">Psychology</option>
+      <option value="Civil Engineering">Civil Engineering</option>
+    </select>
+  </label>
+  <label>Year level
+    <select id="student-year-filter">
+      <option value="">All year levels</option>
+      <option value="1">First Year</option>
+      <option value="2">Second Year</option>
+      <option value="3">Third Year</option>
+      <option value="4">Fourth Year</option>
+      <option value="5">Fifth Year</option>
+      <option value="6">Irregular</option>
+    </select>
+  </label>
+  <label>Enrollment status
+    <select id="student-status-filter">
+      <option value="">All statuses</option>
+      <option>Enrolled</option>
+      <option>Not Enrolled</option>
+    </select>
+  </label>
+</div>
       <div class="table-card">
         <div class="table-scroll">
           <table aria-label="Active student records">
             <thead>
               <tr>
                 <th scope="col">Student number</th>
-                <th scope="col">Name</th>
+                <th scope="col">Surname</th>
+                <th scope="col">First Name</th>
+                <th scope="col">Middle Name</th>
+                <th scope="col">Suffix</th>
                 <th scope="col">Course</th>
                 <th scope="col">Year level</th>
                 <th scope="col">Contact number</th>
