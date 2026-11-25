@@ -283,9 +283,46 @@ function render() {
     ).length;
   }
 
-  const rows = students.map((student) => {
+  renderStudentRecords(students);
+  renderClearance();
+}
+
+function renderStudentRecords(students = activeStudents()) {
+  const search = byId("student-search");
+  const query = (search?.value ?? "").trim().toLowerCase();
+  const terms = query.split(/\s+/).filter(Boolean);
+  const course = byId("student-course-filter")?.value ?? "";
+  const year = byId("student-year-filter")?.value ?? "";
+  const status = byId("student-status-filter")?.value ?? "";
+
+  const matches = students.filter((student) => {
+    const searchable = [
+      student.studentId, student.name, student.surname,
+      student.firstName, student.middleName, student.suffix,
+    ].join(" ").toLowerCase();
+
+    return terms.every((term) => searchable.includes(term))
+      && (!course || savedCourseOption(student.course) === course)
+      && (!year || String(student.year) === year)
+      && (!status || student.status === status);
+  });
+
+  const rows = matches.map((student) => {
     const row = document.createElement("tr");
-    for (const [key] of fields) {
+    row.insertCell().textContent = student.studentId;
+
+    if (!search || (!student.surname && !student.firstName)) {
+      const nameCell = row.insertCell();
+      nameCell.colSpan = search ? 4 : 1;
+      nameCell.textContent = student.name;
+    } else {
+      row.insertCell().textContent = student.surname || "—";
+      row.insertCell().textContent = student.firstName || "—";
+      row.insertCell().textContent = student.middleName || "—";
+      row.insertCell().textContent = student.suffix || "N/A";
+    }
+
+    for (const key of ["course", "year", "contact", "status"]) {
       const cell = row.insertCell();
       if (key === "status") cell.append(badge(student.status));
       else cell.textContent = studentFieldLabel(student, key);
@@ -303,8 +340,11 @@ function render() {
   });
 
   byId("student-rows").replaceChildren(...rows);
-  byId("student-empty").hidden = students.length > 0;
-  renderClearance();
+  const empty = byId("student-empty");
+  empty.hidden = rows.length > 0;
+  empty.textContent = students.length
+    ? "No students match your search or filters."
+    : "No active student records.";
 }
 
 function selectedClearanceStatus() {
@@ -1241,7 +1281,18 @@ for (const button of document.querySelectorAll("[data-close]")) {
         // Keep the selection for this tab even if it cannot be saved.
       }
     });
-
+    for (const id of [
+      "student-search",
+      "student-course-filter",
+      "student-year-filter",
+      "student-status-filter",
+    ]) {
+      const control = byId(id);
+      control?.addEventListener(id === "student-search" ? "input" : "change", () => {
+        page = 1;
+        renderStudentRecords();
+      });
+    }
     // Reapply pagination after an add, edit, remove, or automatic sync.
     new MutationObserver(showPageOfStudents).observe(studentRows, {
       childList: true,
