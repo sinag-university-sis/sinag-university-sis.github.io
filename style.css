@@ -2098,3 +2098,45 @@ html body:not(:has(#sign-in:not([hidden]))) main {
   outline: 2px solid var(--sinag-navy);
   outline-offset: 2px;
 }
+@media (max-width: 760px) {
+  #students .student-records-pager:not([hidden]) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: .5rem;
+    padding: .65rem;
+  }
+
+  #students .student-records-pager [data-page-summary] {
+    grid-column: 1 / -1;
+    margin: 0;
+  }
+
+  #students .student-records-pager .rows-per-page {
+    display: flex;
+    align-items: center;
+    gap: .25rem;
+    min-width: 0;
+    font-size: .75rem;
+  }
+
+  #students .student-records-pager .rows-per-page select {
+    width: auto;
+    min-height: 44px;
+    margin: 0;
+    font-size: .8rem;
+  }
+
+  #students .student-records-pager > div {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: .25rem;
+  }
+
+  #students .student-records-pager > div button {
+    min-height: 44px;
+    padding: .35rem .5rem;
+    font-size: .8rem;
+    white-space: nowrap;
+  }
+}
