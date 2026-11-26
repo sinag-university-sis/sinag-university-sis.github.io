@@ -436,17 +436,36 @@ function openEditor(student = null) {
   message("form-error", "");
   byId("editor-title").textContent = student ? "Edit student" : "Add student";
 
-  const hasLegacyName = Boolean(student && !student.surname && !student.firstName);
-  const legacyName = byId("legacy-student-name");
-  legacyName.hidden = !hasLegacyName;
-  legacyName.textContent = hasLegacyName
-    ? `Saved name: ${student.name}. Fill in the name fields to update it.`
-    : "";
-  for (const key of ["surname", "firstName", "middleName", "suffix"]) {
-    form.elements.namedItem(key).value = student?.[key] ?? "";
+    const nameFields = {
+    surname: student?.surname ?? "",
+    firstName: student?.firstName ?? "",
+    middleName: student?.middleName ?? "",
+    suffix: student?.suffix ?? "",
+  };
+
+  if (student && !nameFields.surname && !nameFields.firstName) {
+    const parts = student.name.trim().split(/\s+/).filter(Boolean);
+    const suffixKey = parts.at(-1)?.replace(/\./g, "").toUpperCase();
+    const suffixes = { JR: "Jr.", SR: "Sr.", II: "II", III: "III", IV: "IV", V: "V" };
+
+    if (parts.length > 2 && Object.hasOwn(suffixes, suffixKey)) {
+      nameFields.suffix = suffixes[suffixKey];
+      parts.pop();
+    }
+
+    if (parts.length > 1) nameFields.surname = parts.pop();
+    if (parts.length > 1 && /^[A-Z]\.$/i.test(parts.at(-1))) {
+      nameFields.middleName = parts.pop();
+    }
+    nameFields.firstName = parts.join(" ");
   }
-  form.elements.namedItem("surname").required = !hasLegacyName;
-  form.elements.namedItem("firstName").required = !hasLegacyName;
+
+  byId("legacy-student-name").hidden = true;
+  for (const [key, value] of Object.entries(nameFields)) {
+    form.elements.namedItem(key).value = value;
+  }
+  form.elements.namedItem("surname").required = true;
+  form.elements.namedItem("firstName").required = true;
 
   if (student) {
     for (const [key] of fields) {
