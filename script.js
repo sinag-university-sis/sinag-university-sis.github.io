@@ -6,7 +6,7 @@ const cloudMode = Boolean(config.supabaseUrl || config.supabasePublishableKey);
 const storageKey = "sims-demo-v1";
 const form = byId("student-form");
 const authForm = byId("sign-in-form");
-const pages = ["dashboard", "students", "clearance", "settings", "library-activity"];
+const pages = ["dashboard", "students", "enrollment", "clearance", "settings", "library-activity"];
 const enrollmentStatuses = ["Enrolled", "Not Enrolled"];
 const clearanceStatuses = ["Pending", "Cleared", "Not Cleared"];
 const fields = [
@@ -97,8 +97,8 @@ function showPage() {
   const page = pages.includes(requested) ? requested : "dashboard";
   const canView = !cloudMode || Boolean(staff);
 
-  for (const id of pages) {
-    byId(id).hidden = !canView || id !== page;
+      const section = byId(id);
+    if (section) section.hidden = !canView || id !== page;
   }
 
   byId("sign-in").hidden = !cloudMode || canView;
@@ -111,6 +111,7 @@ function showPage() {
   }
 
   message("notice", storageError);
+    if (page === "enrollment" && canView) loadEnrollments();
   if (page === "library-activity" && canView) loadClearanceHistory();
   if (page === "settings" && canView) {
     byId("settings-email").textContent = staff?.email ?? "";
@@ -1379,7 +1380,131 @@ for (const button of document.querySelectorAll("[data-close]")) {
     showPageOfStudents();
   }
 }
+const enrollmentForm = byId("enrollment-form");
+const enrollmentSubmit = enrollmentForm?.querySelector("button[type=submit]");
+let enrollmentRequest = 0;
+let savingEnrollment = false;
 
+async function loadEnrollments() {
+  if (!enrollmentForm) return;
+
+  const select = enrollmentForm.elements.student;
+  const selected = select.value;
+  const students = activeStudents();
+  const studentsById = new Map(students.map((student) => [String(student.id), student]));
+
+  select.replaceChildren(new Option("Select student", ""));
+  for (const [id, student] of studentsById) {
+    select.add(new Option(`${student.studentId} · ${student.name}`, id));
+  }
+  if (studentsById.has(selected)) select.value = selected;
+  enrollmentSubmit.disabled = !staff || !students.length || savingEnrollment;
+
+  if (!staff) {
+    message("enrollment-message", "Sign in to save enrollments.");
+    return;
+  }
+
+  const session = staff;
+  const request = ++enrollmentRequest;
+  const rows = [];
+  const pageSize = 100;
+
+  try {
+    for (let offset = 0; ; offset += pageSize) {
+      const { data, error } = await cloud.client.from("student_enrollments")
+        .select("id,student_record_id,school_year,semester,year_level,subjects")
+        .order("id", { ascending: false })
+        .range(offset, offset + pageSize - 1);
+
+      if (session !== staff || request !== enrollmentRequest) return;
+      if (error) throw error;
+
+      rows.push(...data);
+      if (data.length < pageSize) break;
+    }
+
+    byId("enrollment-rows").replaceChildren(...rows.map((enrollment) => {
+      const row = document.createElement("tr");
+      const student = studentsById.get(String(enrollment.student_record_id));
+      const label = student ? `${student.studentId} · ${student.name}` : "Inactive student";
+      const year = enrollmentForm.elements.year.options[enrollment.year_level].text;
+
+      for (const value of [
+        label,
+        enrollment.school_year,
+        enrollment.semester,
+        year,
+        enrollment.subjects.join(", "),
+      ]) {
+        row.insertCell().textContent = value;
+      }
+      return row;
+    }));
+  } catch (error) {
+    if (session === staff && request === enrollmentRequest) {
+      message("enrollment-message", cloudError(error));
+    }
+  }
+}
+
+enrollmentForm?.elements.student.addEventListener("change", () => {
+  const id = enrollmentForm.elements.student.value;
+  const student = activeStudents().find((item) => String(item.id) === id);
+  enrollmentForm.elements.year.value = student ? String(student.year) : "";
+});
+
+enrollmentForm?.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!staff || savingEnrollment) return;
+
+  const session = staff;
+  const values = new FormData(enrollmentForm);
+  const schoolYear = String(values.get("schoolYear")).trim();
+  const [start, end] = schoolYear.split("-").map(Number);
+  const subjects = String(values.get("subjects")).split(/\r?\n/)
+    .map((subject) => subject.trim()).filter(Boolean);
+
+  if (!/^\d{4}-\d{4}$/.test(schoolYear) || end !== start + 1) {
+    message("enrollment-message", "Enter consecutive school years, such as 2026-2027.");
+    return;
+  }
+  if (!subjects.length || subjects.length > 15 ||
+      subjects.some((subject) => subject.length > 120) ||
+      new Set(subjects.map((subject) => subject.toLowerCase())).size !== subjects.length) {
+    message("enrollment-message", "Enter 1–15 unique subjects, up to 120 characters each.");
+    return;
+  }
+
+  savingEnrollment = true;
+  enrollmentSubmit.disabled = true;
+
+  try {
+    const { error } = await cloud.client.from("student_enrollments").insert({
+      student_record_id: values.get("student"),
+      school_year: schoolYear,
+      semester: values.get("semester"),
+      year_level: Number(values.get("year")),
+      subjects,
+    });
+
+    if (session !== staff) return;
+    if (error) throw error;
+
+    enrollmentForm.reset();
+    message("enrollment-message", "Enrollment saved.");
+    await loadEnrollments();
+  } catch (error) {
+    if (session === staff) {
+      message("enrollment-message", error.code === "23505"
+        ? "This student is already enrolled for that school year and semester."
+        : cloudError(error));
+    }
+  } finally {
+    savingEnrollment = false;
+    enrollmentSubmit.disabled = !staff || !activeStudents().length;
+  }
+});
 if (cloudMode) {
   startCloud();
 } else {
