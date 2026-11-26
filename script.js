@@ -1510,29 +1510,146 @@ const sampleCurriculum = {
 
 if (enrollmentForm) {
   const { student, year, semester, subjects } = enrollmentForm.elements;
+  const selectedSubjects = [];
+  const subjectsLabel = subjects.closest("label");
+  subjectsLabel.hidden = true;
+  subjects.required = false;
 
-  function fillSampleSubjects() {
-    const selected = activeStudents().find(
-      (record) => String(record.id) === student.value
-    );
-    if (!selected || !year.value) {
-      subjects.value = "";
-      subjects.placeholder = "Select a student and year level to load subjects.";
-      return;
+  const picker = document.createElement("div");
+  picker.style.marginTop = "1rem";
+  picker.innerHTML = `
+    <label>Subject
+      <select data-subject></select>
+    </label>
+    <label data-other-label hidden>Other subject
+      <input type="text" data-other maxlength="120">
+    </label>
+    <button type="button" class="secondary" data-add>Add subject</button>
+    <p role="status" data-subject-message></p>
+    <ul aria-label="Selected subjects" data-selected></ul>
+  `;
+  subjectsLabel.after(picker);
+
+  const subjectSelect = picker.querySelector("[data-subject]");
+  const otherLabel = picker.querySelector("[data-other-label]");
+  const otherInput = picker.querySelector("[data-other]");
+  const subjectMessage = picker.querySelector("[data-subject-message]");
+  const selectedList = picker.querySelector("[data-selected]");
+  const addSubject = picker.querySelector("[data-add]");
+
+  function renderSelectedSubjects() {
+    subjects.value = selectedSubjects.join("\n");
+    selectedList.replaceChildren();
+
+    for (const [index, title] of selectedSubjects.entries()) {
+      const item = document.createElement("li");
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.className = "secondary";
+      remove.textContent = "Remove";
+      remove.setAttribute("aria-label", `Remove ${title}`);
+      remove.addEventListener("click", () => {
+        selectedSubjects.splice(index, 1);
+        renderSelectedSubjects();
+      });
+      item.append(title, " ", remove);
+      selectedList.append(item);
     }
+  }
 
-    const course = savedCourseOption(selected.course);
-    const semesterIndex = ["First Semester", "Second Semester"].indexOf(semester.value);
-    const termIndex = (Number(year.value) - 1) * 2 + semesterIndex;
-    const options = semesterIndex >= 0 ? sampleCurriculum[course]?.[termIndex] : null;
+  function loadSubjectOptions() {
+    const record = activeStudents().find((item) => String(item.id) === student.value);
+    const ready = Boolean(record && year.value && semester.value);
+    const term = ["First Semester", "Second Semester"].indexOf(semester.value);
+    const course = record ? savedCourseOption(record.course) : "";
+    const index = (Number(year.value) - 1) * 2 + term;
+    const options = ready && term >= 0 ? sampleCurriculum[course]?.[index] ?? [] : [];
 
-    subjects.value = options?.join("\n") ?? "";
-    subjects.placeholder = options ? "" : "No sample subjects for this term.";
+    subjectSelect.replaceChildren(new Option("Select subject", ""));
+    for (const title of options) subjectSelect.add(new Option(title, title));
+    if (ready) subjectSelect.add(new Option("Other…", "__other__"));
+
+    subjectSelect.disabled = !ready;
+    addSubject.disabled = !ready;
+    otherLabel.hidden = true;
+    otherInput.value = "";
+    selectedSubjects.length = 0;
+    renderSelectedSubjects();
+
+    subjectMessage.textContent = ready && !options.length
+      ? "No sample subjects for this term. Select Other… to enter one."
+      : "";
   }
 
   for (const field of [student, year, semester]) {
-    field.addEventListener("change", fillSampleSubjects);
+    field.addEventListener("change", loadSubjectOptions);
   }
+
+  subjectSelect.addEventListener("change", () => {
+    otherLabel.hidden = subjectSelect.value !== "__other__";
+    if (!otherLabel.hidden) otherInput.focus();
+  });
+
+  addSubject.addEventListener("click", () => {
+    const title = subjectSelect.value === "__other__"
+      ? otherInput.value.trim()
+      : subjectSelect.value;
+
+    if (!title) {
+      subjectMessage.textContent = "Choose or enter a subject first.";
+      return;
+    }
+    if (selectedSubjects.some((item) => item.toLowerCase() === title.toLowerCase())) {
+      subjectMessage.textContent = "That subject is already on the list.";
+      return;
+    }
+    if (selectedSubjects.length >= 15) {
+      subjectMessage.textContent = "You can add up to 15 subjects.";
+      return;
+    }
+
+    selectedSubjects.push(title);
+    renderSelectedSubjects();
+    subjectMessage.textContent = "";
+    subjectSelect.value = "";
+    otherInput.value = "";
+    otherLabel.hidden = true;
+  });
+
+  const dialog = document.createElement("dialog");
+  dialog.setAttribute("aria-labelledby", "add-enrollment-title");
+  dialog.innerHTML = `<h2 id="add-enrollment-title">Add Enrollment</h2>`;
+  enrollmentForm.before(dialog);
+
+  const notice = byId("enrollment-message");
+  enrollmentForm.append(notice);
+  dialog.append(enrollmentForm);
+
+  const openButton = document.createElement("button");
+  openButton.type = "button";
+  openButton.textContent = "Add Enrollment";
+  byId("enrollment").querySelector(".page-header").append(openButton);
+
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "secondary";
+  cancel.textContent = "Cancel";
+  enrollmentForm.querySelector(".actions").prepend(cancel);
+
+  openButton.addEventListener("click", () => {
+    loadSubjectOptions();
+    dialog.showModal();
+  });
+  cancel.addEventListener("click", () => dialog.close());
+
+  enrollmentForm.addEventListener("reset", () => {
+    queueMicrotask(() => {
+      loadSubjectOptions();
+      if (dialog.open) dialog.close();
+    });
+  });
+
+  loadSubjectOptions();
 }
 enrollmentForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
