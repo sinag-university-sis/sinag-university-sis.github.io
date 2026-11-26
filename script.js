@@ -1414,7 +1414,7 @@ async function loadEnrollments() {
   try {
     for (let offset = 0; ; offset += pageSize) {
       const { data, error } = await cloud.client.from("student_enrollments")
-        .select("id,student_record_id,school_year,semester,year_level,subjects")
+        .select("id,student_record_id,school_year,semester,year_level,subjects,subject_details")
         .order("id", { ascending: false })
         .range(offset, offset + pageSize - 1);
 
@@ -1440,6 +1440,12 @@ async function loadEnrollments() {
       ]) {
         row.insertCell().textContent = value;
       }
+            const view = document.createElement("button");
+      view.type = "button";
+      view.className = "secondary";
+      view.textContent = "View";
+      view.addEventListener("click", () => viewEnrolledSubjects(enrollment, label, year));
+      row.insertCell().append(view);
       return row;
     }));
   } catch (error) {
@@ -1651,6 +1657,143 @@ if (enrollmentForm) {
 
   loadSubjectOptions();
 }
+const subjectDetailsByTitle = new Map();
+
+function viewEnrolledSubjects(enrollment, student, year) {
+  const dialog = document.createElement("dialog");
+  dialog.style.width = "min(56rem, 94vw)";
+  dialog.setAttribute("aria-labelledby", "enrolled-subjects-title");
+  dialog.innerHTML = `
+    <h2 id="enrolled-subjects-title">Enrolled Subjects</h2>
+    <p data-enrollment-term></p>
+    <div class="table-scroll">
+      <table aria-label="Enrolled subjects">
+        <thead><tr>
+          <th scope="col">Course Code</th>
+          <th scope="col">Course Title</th>
+          <th scope="col">Units</th>
+          <th scope="col">Section</th>
+          <th scope="col">Instructor</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p data-total-units></p>
+    <form method="dialog" class="actions"><button>Close</button></form>
+  `;
+
+  dialog.querySelector("[data-enrollment-term]").textContent =
+    [student, enrollment.school_year, enrollment.semester, year].join(" · ");
+
+  const details = enrollment.subject_details
+    ?? enrollment.subjects.map((title) => ({ title }));
+  const body = dialog.querySelector("tbody");
+
+  for (const subject of details) {
+    const row = body.insertRow();
+    for (const value of [
+      subject.code, subject.title, subject.units, subject.section, subject.instructor,
+    ]) {
+      row.insertCell().textContent = value ?? "—";
+    }
+  }
+
+  const hasUnits = details.every((subject) => Number.isFinite(subject.units));
+  dialog.querySelector("[data-total-units]").textContent = hasUnits
+    ? `Total Units: ${details.reduce((total, subject) => total + subject.units, 0)}`
+    : "Total units were not recorded for this enrollment.";
+
+  dialog.addEventListener("close", () => dialog.remove(), { once: true });
+  document.body.append(dialog);
+  dialog.showModal();
+}
+
+if (enrollmentForm) {
+  const header = byId("enrollment-rows").closest("table").tHead.rows[0];
+  const actionsHeading = document.createElement("th");
+  actionsHeading.scope = "col";
+  actionsHeading.textContent = "Actions";
+  header.append(actionsHeading);
+
+  const picker = enrollmentForm.querySelector("[data-subject]").closest("div");
+  const subjectSelect = picker.querySelector("[data-subject]");
+  const addSubject = picker.querySelector("[data-add]");
+  const fields = document.createElement("div");
+  fields.className = "fields";
+  fields.hidden = true;
+  fields.style.marginBlock = ".75rem";
+  fields.innerHTML = `
+    <label>Course Code <input data-code maxlength="30"></label>
+    <label>Units <input type="number" data-units min="0" max="12" step="0.5"></label>
+    <label>Section <input data-section maxlength="40"></label>
+    <label>Instructor <input data-instructor maxlength="120"></label>
+  `;
+  addSubject.before(fields);
+
+  const code = fields.querySelector("[data-code]");
+  const units = fields.querySelector("[data-units]");
+  const section = fields.querySelector("[data-section]");
+  const instructor = fields.querySelector("[data-instructor]");
+  const termFields = enrollmentForm.elements;
+
+  subjectSelect.addEventListener("change", () => {
+    fields.hidden = !subjectSelect.value;
+    const sample = subjectSelect.value && subjectSelect.value !== "__other__";
+    const student = activeStudents().find(
+      (record) => String(record.id) === termFields.student.value
+    );
+    const course = student ? savedCourseOption(student.course) : "";
+    const prefix = course === "Civil Engineering" ? "CE" : course.toUpperCase();
+    const semester = termFields.semester.value === "First Semester" ? 1 : 2;
+    code.value = sample ? `${prefix}${termFields.year.value}${semester}${subjectSelect.selectedIndex}` : "";
+    units.value = sample ? "3" : "";
+    section.value = sample ? `${prefix}-${termFields.year.value}A` : "";
+    instructor.value = sample ? "Prof. Alex Reyes (Sample)" : "";
+  });
+
+  addSubject.addEventListener("click", (event) => {
+    const title = subjectSelect.value === "__other__"
+      ? picker.querySelector("[data-other]").value.trim()
+      : subjectSelect.value;
+    if (!title) return;
+
+    if (!code.value.trim() || !Number.isFinite(units.valueAsNumber) ||
+        !units.checkValidity() || !section.value.trim() || !instructor.value.trim()) {
+      event.stopImmediatePropagation();
+      picker.querySelector("[data-subject-message]").textContent =
+        "Enter a course code, units, section, and instructor.";
+      return;
+    }
+
+    const details = {
+      code: code.value.trim(),
+      title,
+      units: units.valueAsNumber,
+      section: section.value.trim(),
+      instructor: instructor.value.trim(),
+    };
+
+    queueMicrotask(() => {
+      if (subjectSelect.value === "") {
+        subjectDetailsByTitle.set(title, details);
+        fields.hidden = true;
+        units.value = "";
+      }
+    });
+  }, true);
+
+  for (const field of [termFields.student, termFields.year, termFields.semester]) {
+    field.addEventListener("change", () => {
+      fields.hidden = true;
+      units.value = "";
+      subjectDetailsByTitle.clear();
+    });
+  }
+  enrollmentForm.addEventListener("reset", () => {
+    fields.hidden = true;
+    subjectDetailsByTitle.clear();
+  });
+}
 enrollmentForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!staff || savingEnrollment) return;
@@ -1683,6 +1826,7 @@ enrollmentForm?.addEventListener("submit", async (event) => {
       semester: values.get("semester"),
       year_level: Number(values.get("year")),
       subjects,
+      subject_details: subjects.map((title) => subjectDetailsByTitle.get(title) ?? { title }),
     });
 
     if (session !== staff) return;
