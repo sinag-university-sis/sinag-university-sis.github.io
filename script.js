@@ -1455,6 +1455,85 @@ enrollmentForm?.elements.student.addEventListener("change", () => {
   enrollmentForm.elements.year.value = student ? String(student.year) : "";
 });
 
+const sampleCurriculum = {
+  IT: [
+    ["Introduction to Computing", "Computer Programming 1"],
+    ["Computer Programming 2", "Discrete Mathematics"],
+    ["Data Structures and Algorithms", "Object-Oriented Programming"],
+    ["Information Management", "Networking 1"],
+    ["Web Development", "Networking 2"],
+    ["Mobile App Development", "Information Assurance"],
+    ["Capstone Project 1", "Systems Administration and Maintenance"],
+    ["Capstone Project 2", "IT Internship"],
+  ],
+  CS: [
+    ["Introduction to Computing", "Computer Programming 1"],
+    ["Computer Programming 2", "Discrete Mathematics"],
+    ["Data Structures and Algorithms", "Computer Organization"],
+    ["Design and Analysis of Algorithms", "Database Systems"],
+    ["Operating Systems", "Theory of Computation"],
+    ["Artificial Intelligence", "Software Engineering"],
+    ["Computer Science Thesis 1", "Distributed Computing"],
+    ["Computer Science Thesis 2", "CS Internship"],
+  ],
+  HM: [
+    ["Introduction to Hospitality", "Food Safety and Sanitation"],
+    ["Culinary Fundamentals", "Food and Beverage Service"],
+    ["Front Office Operations", "Housekeeping Operations"],
+    ["Baking and Pastry", "Hospitality Marketing"],
+    ["Event Management", "Cost Control"],
+    ["Restaurant Operations", "Hospitality Entrepreneurship"],
+    ["Hospitality Research", "Hotel Operations Management"],
+    ["Hospitality Practicum", "Hospitality Strategic Management"],
+  ],
+  Psych: [
+    ["Introduction to Psychology", "Understanding the Self"],
+    ["Developmental Psychology", "Psychological Statistics"],
+    ["Social Psychology", "Personality Theories"],
+    ["Experimental Psychology", "Research Methods"],
+    ["Abnormal Psychology", "Psychological Assessment"],
+    ["Industrial Psychology", "Cognitive Psychology"],
+    ["Psychology Research 1", "Counseling Psychology"],
+    ["Psychology Research 2", "Psychology Practicum"],
+  ],
+  "Civil Engineering": [
+    ["Engineering Drawing", "Calculus 1"],
+    ["Calculus 2", "Physics for Engineers"],
+    ["Engineering Mechanics", "Surveying"],
+    ["Mechanics of Materials", "Construction Materials"],
+    ["Structural Analysis", "Geotechnical Engineering"],
+    ["Hydraulics", "Reinforced Concrete Design"],
+    ["Steel Design", "Construction Project Management"],
+    ["Civil Engineering Design Project", "Civil Engineering Practicum"],
+  ],
+};
+
+if (enrollmentForm) {
+  const { student, year, semester, subjects } = enrollmentForm.elements;
+
+  function fillSampleSubjects() {
+    const selected = activeStudents().find(
+      (record) => String(record.id) === student.value
+    );
+    if (!selected || !year.value) {
+      subjects.value = "";
+      subjects.placeholder = "Select a student and year level to load subjects.";
+      return;
+    }
+
+    const course = savedCourseOption(selected.course);
+    const semesterIndex = ["First Semester", "Second Semester"].indexOf(semester.value);
+    const termIndex = (Number(year.value) - 1) * 2 + semesterIndex;
+    const options = semesterIndex >= 0 ? sampleCurriculum[course]?.[termIndex] : null;
+
+    subjects.value = options?.join("\n") ?? "";
+    subjects.placeholder = options ? "" : "No sample subjects for this term.";
+  }
+
+  for (const field of [student, year, semester]) {
+    field.addEventListener("change", fillSampleSubjects);
+  }
+}
 enrollmentForm?.addEventListener("submit", async (event) => {
   event.preventDefault();
   if (!staff || savingEnrollment) return;
