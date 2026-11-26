@@ -1660,48 +1660,91 @@ if (enrollmentForm) {
 const subjectDetailsByTitle = new Map();
 
 function viewEnrolledSubjects(enrollment, student, year) {
-  const dialog = document.createElement("dialog");
-  dialog.style.width = "min(56rem, 94vw)";
-  dialog.setAttribute("aria-labelledby", "enrolled-subjects-title");
-  dialog.innerHTML = `
-    <h2 id="enrolled-subjects-title">Enrolled Subjects</h2>
-    <p data-enrollment-term></p>
-    <div class="table-scroll">
-      <table aria-label="Enrolled subjects">
-        <thead><tr>
-          <th scope="col">Course Code</th>
-          <th scope="col">Course Title</th>
-          <th scope="col">Units</th>
-          <th scope="col">Section</th>
-          <th scope="col">Instructor</th>
-        </tr></thead>
-        <tbody></tbody>
-      </table>
-    </div>
-    <p data-total-units></p>
-    <form method="dialog" class="actions"><button>Close</button></form>
-  `;
-
-  dialog.querySelector("[data-enrollment-term]").textContent =
-    [student, enrollment.school_year, enrollment.semester, year].join(" · ");
-
+  const record = activeStudents().find(
+    (item) => String(item.id) === String(enrollment.student_record_id)
+  );
   const details = enrollment.subject_details
     ?? enrollment.subjects.map((title) => ({ title }));
-  const body = dialog.querySelector("tbody");
+  const sections = [...new Set(details.map((subject) => subject.section).filter(Boolean))];
 
+  const dialog = document.createElement("dialog");
+  dialog.style.width = "min(72rem, calc(100% - 2rem))";
+  dialog.setAttribute("aria-labelledby", "enrollment-report-title");
+  dialog.innerHTML = `
+    <h2 id="enrollment-report-title">Enrollment Details</h2>
+
+    <section aria-labelledby="report-student-title">
+      <h3 id="report-student-title">Student Information</h3>
+      <div class="table-card">
+        <div class="table-scroll">
+          <table aria-labelledby="report-student-title">
+            <thead><tr>
+              <th scope="col">Student Number</th>
+              <th scope="col">Student Name</th>
+              <th scope="col">School Year</th>
+              <th scope="col">Semester</th>
+              <th scope="col">Course</th>
+              <th scope="col">Year Level</th>
+              <th scope="col">Section</th>
+            </tr></thead>
+            <tbody data-student-info></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section aria-labelledby="report-subjects-title" style="margin-top:1.25rem">
+      <h3 id="report-subjects-title">Enrolled Subjects</h3>
+      <div class="table-card">
+        <div class="table-scroll">
+          <table aria-labelledby="report-subjects-title">
+            <thead><tr>
+              <th scope="col">Course Code</th>
+              <th scope="col">Course Title</th>
+              <th scope="col">Units</th>
+              <th scope="col">Section</th>
+              <th scope="col">Instructor</th>
+            </tr></thead>
+            <tbody data-enrolled-subjects></tbody>
+          </table>
+        </div>
+      </div>
+      <p data-total-units style="margin-top:.75rem;text-align:right;font-weight:700"></p>
+    </section>
+
+    <form method="dialog" class="actions">
+      <button type="submit" class="secondary">Close</button>
+    </form>
+  `;
+
+  const infoRow = dialog.querySelector("[data-student-info]").insertRow();
+  for (const value of [
+    record?.studentId,
+    record?.name ?? student,
+    enrollment.school_year,
+    enrollment.semester,
+    record ? studentFieldLabel(record, "course") : null,
+    year,
+    sections.join(", "),
+  ]) {
+    infoRow.insertCell().textContent = value || "—";
+  }
+
+  const subjectBody = dialog.querySelector("[data-enrolled-subjects]");
   for (const subject of details) {
-    const row = body.insertRow();
-    for (const value of [
-      subject.code, subject.title, subject.units, subject.section, subject.instructor,
-    ]) {
+    const row = subjectBody.insertRow();
+    const units = Number.isFinite(subject.units) ? subject.units.toFixed(2) : "—";
+    for (const value of [subject.code, subject.title, units, subject.section, subject.instructor]) {
       row.insertCell().textContent = value ?? "—";
     }
   }
 
-  const hasUnits = details.every((subject) => Number.isFinite(subject.units));
-  dialog.querySelector("[data-total-units]").textContent = hasUnits
-    ? `Total Units: ${details.reduce((total, subject) => total + subject.units, 0)}`
-    : "Total units were not recorded for this enrollment.";
+  const hasCompleteUnits = details.length > 0
+    && details.every((subject) => Number.isFinite(subject.units));
+  const total = details.reduce((sum, subject) => sum + (subject.units ?? 0), 0);
+  dialog.querySelector("[data-total-units]").textContent = hasCompleteUnits
+    ? `Total Units: ${total.toFixed(2)}`
+    : "Total Units: Not recorded";
 
   dialog.addEventListener("close", () => dialog.remove(), { once: true });
   document.body.append(dialog);
