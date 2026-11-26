@@ -389,6 +389,13 @@ function renderClearance() {
 }
 
 function studentFieldLabel(student, key) {
+    if (key === "year") {
+    const yearSelect = form.elements.namedItem("year");
+    const option = Array.from(yearSelect.options).find(
+      (item) => item.value === String(student.year)
+    );
+    return option?.textContent ?? student.year;
+  }
   if (key !== "course") return student[key];
 
   const courseCode = savedCourseOption(student.course);
