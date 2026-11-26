@@ -1445,7 +1445,157 @@ async function loadEnrollments() {
       view.className = "secondary";
       view.textContent = "View";
       view.addEventListener("click", () => viewEnrolledSubjects(enrollment, label, year));
-      row.insertCell().append(view);
+            const edit = document.createElement("button");
+      edit.type = "button";
+      edit.className = "secondary";
+      edit.textContent = "Edit";
+      edit.addEventListener("click", () => {
+        const session = staff;
+        const dialog = document.createElement("dialog");
+        dialog.style.width = "min(68rem, calc(100% - 2rem))";
+        dialog.setAttribute("aria-labelledby", "edit-enrollment-title");
+        dialog.innerHTML = `
+          <h2 id="edit-enrollment-title">Edit Enrollment</h2>
+          <p data-enrollment-label></p>
+          <form>
+            <label>Year Level <select name="yearLevel" required></select></label>
+            <div class="table-scroll" style="margin-top:1rem">
+              <table aria-label="Subjects to edit">
+                <thead><tr>
+                  <th scope="col">Course Code</th>
+                  <th scope="col">Course Title</th>
+                  <th scope="col">Units</th>
+                  <th scope="col">Section</th>
+                  <th scope="col">Instructor</th>
+                </tr></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+            <p role="status" data-error></p>
+            <div class="actions">
+              <button type="button" class="secondary" data-cancel>Cancel</button>
+              <button type="submit">Save changes</button>
+            </div>
+          </form>
+        `;
+
+        dialog.querySelector("[data-enrollment-label]").textContent =
+          [label, enrollment.school_year, enrollment.semester].join(" · ");
+
+        const form = dialog.querySelector("form");
+        const yearLevel = form.elements.namedItem("yearLevel");
+        for (const option of enrollmentForm.elements.year.options) {
+          if (option.value) yearLevel.add(new Option(option.text, option.value));
+        }
+        yearLevel.value = String(enrollment.year_level);
+
+        const body = dialog.querySelector("tbody");
+        const details = enrollment.subject_details
+          ?? enrollment.subjects.map((title) => ({ title }));
+        const columns = [
+          ["code", "Course Code", 30],
+          ["title", "Course Title", 120],
+          ["units", "Units", 0],
+          ["section", "Section", 40],
+          ["instructor", "Instructor", 120],
+        ];
+
+        for (const [index, subject] of details.entries()) {
+          const subjectRow = body.insertRow();
+          for (const [key, heading, limit] of columns) {
+            const input = document.createElement("input");
+            input.name = `${key}-${index}`;
+            input.required = true;
+            input.value = subject[key] ?? "";
+            input.setAttribute("aria-label", `${heading}, subject ${index + 1}`);
+            if (key === "units") {
+              input.type = "number";
+              input.min = "0";
+              input.max = "12";
+              input.step = "0.5";
+            } else {
+              input.maxLength = limit;
+            }
+            subjectRow.insertCell().append(input);
+          }
+        }
+
+        const errorText = dialog.querySelector("[data-error]");
+        const save = form.querySelector('button[type="submit"]');
+        const cancel = dialog.querySelector("[data-cancel]");
+        cancel.addEventListener("click", () => dialog.close());
+        dialog.addEventListener("cancel", (event) => {
+          if (save.disabled) event.preventDefault();
+        });
+
+        form.addEventListener("submit", async (event) => {
+          event.preventDefault();
+          if (!session || staff !== session || save.disabled) return;
+          const values = new FormData(form);
+          const updated = details.map((_, index) => ({
+            code: String(values.get(`code-${index}`)).trim(),
+            title: String(values.get(`title-${index}`)).trim(),
+            units: Number(values.get(`units-${index}`)),
+            section: String(values.get(`section-${index}`)).trim(),
+            instructor: String(values.get(`instructor-${index}`)).trim(),
+          }));
+          if (updated.some(({ code, title, section, instructor }) =>
+            !code || !title || !section || !instructor
+          )) {
+            errorText.textContent = "Complete the details for every subject.";
+            return;
+          }
+
+          const codes = new Set(updated.map(({ code }) => code.toLowerCase()));
+          const titles = new Set(updated.map(({ title }) => title.toLowerCase()));
+          if (codes.size !== updated.length || titles.size !== updated.length) {
+            errorText.textContent = "Use a unique code and title for each subject.";
+            return;
+          }
+
+          save.disabled = true;
+          cancel.disabled = true;
+          errorText.textContent = "";
+
+          try {
+            const { data, error } = await cloud.client
+              .from("student_enrollments")
+              .update({
+                year_level: Number(values.get("yearLevel")),
+                subjects: updated.map(({ title }) => title),
+                subject_details: updated,
+              })
+              .eq("id", enrollment.id)
+              .select("id")
+              .maybeSingle();
+
+            if (staff !== session) return;
+            if (error) throw error;
+            if (!data) {
+              errorText.textContent = "Could not update this enrollment. Refresh and try again.";
+              return;
+            }
+
+            dialog.close();
+            message("notice", "Enrollment updated.");
+            await loadEnrollments();
+          } catch (error) {
+            if (staff === session) errorText.textContent = cloudError(error);
+          } finally {
+            save.disabled = false;
+            cancel.disabled = false;
+          }
+        });
+
+        dialog.addEventListener("close", () => dialog.remove(), { once: true });
+        document.body.append(dialog);
+        dialog.showModal();
+      });
+
+      const actions = document.createElement("div");
+      actions.className = "row-actions";
+      actions.append(view, edit);
+      row.insertCell().append(actions);
       return row;
     }));
   } catch (error) {
