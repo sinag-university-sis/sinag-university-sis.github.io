@@ -2051,3 +2051,50 @@ html body:not(:has(#sign-in:not([hidden]))) main {
     grid-template-columns: minmax(0, 1fr) !important;
   }
 }
+/* Enrollment */
+.sidebar nav a[data-page="enrollment"]::before {
+  content: "";
+  display: block;
+  flex: 0 0 1.125rem;
+  height: 1.125rem;
+  background: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='4' width='14' height='17' rx='2'/%3E%3Cpath d='M9 4V3h6v1m-6 6h6m-6 4h6m-6 4h3'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+
+#enrollment .page-header {
+  padding: clamp(1rem, 3vw, 1.6rem);
+  margin-bottom: 1.25rem;
+  border: 1px solid var(--sinag-border);
+  border-radius: 1rem;
+  background: linear-gradient(120deg, var(--sinag-paper), var(--sinag-blue-tint));
+}
+
+#enrollment .page-header h1 {
+  color: var(--sinag-navy);
+  font-size: clamp(1.65rem, 3vw, 2.35rem);
+}
+
+#enrollment-form > label {
+  display: block;
+  margin-top: 1rem;
+}
+
+#enrollment-form textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 7rem;
+  margin-top: .3rem;
+  padding: .6rem .65rem;
+  border: 1px solid #9bafbf;
+  border-radius: .45rem;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+  resize: vertical;
+}
+
+#enrollment-form textarea:focus-visible {
+  outline: 2px solid var(--sinag-navy);
+  outline-offset: 2px;
+}
