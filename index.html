@@ -24,7 +24,6 @@
     <nav aria-label="Main navigation">
       <a href="#dashboard" data-page="dashboard">Dashboard</a>
       <a href="#students" data-page="students">Student records</a>
-      <a href="#enrollment" data-page="enrollment">Enrollment</a>
       <a href="#clearance" data-page="clearance">Library clearance</a>
     </nav>
 
@@ -441,67 +440,6 @@
         </div>
       </div>
     </section>
-<section id="enrollment" aria-labelledby="enrollment-title" hidden>
-  <header class="page-header">
-    <div>
-      <h1 id="enrollment-title">Enrollment</h1>
-      <p>Enroll an existing student for a school year and semester.</p>
-    </div>
-  </header>
-
-  <form id="enrollment-form" class="table-card" style="padding:1.25rem; margin-bottom:1rem">
-    <div class="fields">
-      <label>Student
-        <select name="student" required></select>
-      </label>
-      <label>School year
-        <input name="schoolYear" placeholder="2026-2027" pattern="[0-9]{4}-[0-9]{4}" maxlength="9" required>
-      </label>
-      <label>Semester
-        <select name="semester" required>
-          <option>First Semester</option>
-          <option>Second Semester</option>
-          <option>Summer</option>
-        </select>
-      </label>
-      <label>Year level
-        <select name="year" required>
-          <option value="">Select year level</option>
-          <option value="1">First Year</option>
-          <option value="2">Second Year</option>
-          <option value="3">Third Year</option>
-          <option value="4">Fourth Year</option>
-          <option value="5">Fifth Year</option>
-          <option value="6">Irregular</option>
-        </select>
-      </label>
-    </div>
-    <label>Subjects (one per line)
-      <textarea name="subjects" rows="4" maxlength="1800" required></textarea>
-    </label>
-    <div class="actions">
-      <button type="submit">Save enrollment</button>
-    </div>
-  </form>
-
-  <p id="enrollment-message" role="status" hidden></p>
-  <div class="table-card">
-    <div class="table-scroll">
-      <table aria-label="Saved enrollments">
-        <thead>
-          <tr>
-            <th scope="col">Student</th>
-            <th scope="col">School year</th>
-            <th scope="col">Semester</th>
-            <th scope="col">Year level</th>
-            <th scope="col">Subjects</th>
-          </tr>
-        </thead>
-        <tbody id="enrollment-rows"></tbody>
-      </table>
-    </div>
-  </div>
-</section>
     <section id="clearance" aria-labelledby="clearance-title" hidden>
       <header class="page-header">
         <div>
