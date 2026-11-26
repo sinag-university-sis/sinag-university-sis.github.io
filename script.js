@@ -1644,6 +1644,20 @@ if (enrollmentForm) {
 
   openButton.addEventListener("click", () => {
     loadSubjectOptions();
+        const dateParts = new Intl.DateTimeFormat("en", {
+      timeZone: "Asia/Manila",
+      year: "numeric",
+      month: "numeric",
+    }).formatToParts(new Date());
+
+    const year = Number(dateParts.find((part) => part.type === "year").value);
+    const month = Number(dateParts.find((part) => part.type === "month").value);
+    const schoolYearStartMonth = 8; // August
+    const startYear = month >= schoolYearStartMonth ? year : year - 1;
+
+    const schoolYearInput = enrollmentForm.elements.namedItem("schoolYear");
+    schoolYearInput.value = `${startYear}-${startYear + 1}`;
+    schoolYearInput.readOnly = true;
     dialog.showModal();
   });
   cancel.addEventListener("click", () => dialog.close());
