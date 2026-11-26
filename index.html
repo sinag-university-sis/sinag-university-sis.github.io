@@ -753,5 +753,125 @@
       </div>
     </form>
   </dialog>
+  <style>
+  #mobile-menu-bar,
+  #mobile-menu-shade {
+    display: none;
+  }
+
+  @media (max-width: 760px) {
+    html body:has(#sign-in[hidden]) #mobile-menu-bar {
+      position: sticky;
+      top: 0;
+      z-index: 90;
+      display: flex;
+      align-items: center;
+      gap: .75rem;
+      height: 3.5rem;
+      padding-inline: 1rem;
+      background: #21334b;
+      color: #fff;
+    }
+
+    #mobile-menu-toggle {
+      min-width: 44px;
+      min-height: 44px;
+      padding: .35rem;
+      font-size: 1.35rem;
+    }
+
+    html body:has(#sign-in[hidden]) .sidebar {
+      position: fixed;
+      inset: 3.5rem auto 0 0;
+      z-index: 89;
+      width: min(17rem, 85vw);
+      height: auto;
+      overflow-y: auto;
+      visibility: hidden;
+      transform: translateX(-100%);
+      transition: transform .2s ease;
+    }
+
+    html body.mobile-menu-open:has(#sign-in[hidden]) .sidebar {
+      visibility: visible;
+      transform: translateX(0);
+    }
+
+    html body.mobile-menu-open:has(#sign-in[hidden]) #mobile-menu-shade {
+      position: fixed;
+      inset: 3.5rem 0 0;
+      z-index: 88;
+      display: block;
+      background: rgb(18 33 49 / 55%);
+    }
+
+    .sidebar nav:not([hidden]) {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .sidebar .demo,
+    .sidebar #cloud-controls {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .sidebar { transition: none; }
+  }
+</style>
+
+<div id="mobile-menu-bar">
+  <button type="button" id="mobile-menu-toggle"
+          aria-label="Open navigation" aria-expanded="false"
+          aria-controls="sis-sidebar">☰</button>
+  <strong>Sinag University</strong>
+</div>
+<div id="mobile-menu-shade" aria-hidden="true"></div>
+
+<script>
+  (() => {
+    const sidebar = document.querySelector(".sidebar");
+    const main = document.querySelector("main");
+    const signIn = document.getElementById("sign-in");
+    const bar = document.getElementById("mobile-menu-bar");
+    const toggle = document.getElementById("mobile-menu-toggle");
+    const shade = document.getElementById("mobile-menu-shade");
+    const mobile = matchMedia("(max-width: 760px)");
+
+    sidebar.id = "sis-sidebar";
+    main.before(bar);
+
+    function setMenu(open) {
+      const expanded = open && mobile.matches && signIn.hidden;
+      document.body.classList.toggle("mobile-menu-open", expanded);
+      toggle.setAttribute("aria-expanded", String(expanded));
+      toggle.setAttribute("aria-label", expanded ? "Close navigation" : "Open navigation");
+      main.inert = expanded;
+    }
+
+    function closeMenu() {
+      if (toggle.getAttribute("aria-expanded") !== "true") return;
+      setMenu(false);
+      if (mobile.matches && signIn.hidden) toggle.focus();
+    }
+
+    toggle.addEventListener("click", () => {
+      if (toggle.getAttribute("aria-expanded") === "true") closeMenu();
+      else setMenu(true);
+    });
+    shade.addEventListener("click", closeMenu);
+    sidebar.addEventListener("click", (event) => {
+      if (event.target.closest("[data-page], #sign-out")) closeMenu();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeMenu();
+    });
+    mobile.addEventListener("change", closeMenu);
+    new MutationObserver(() => {
+      if (!signIn.hidden) closeMenu();
+    }).observe(signIn, { attributeFilter: ["hidden"] });
+  })();
+</script>
 </body>
 </html>
