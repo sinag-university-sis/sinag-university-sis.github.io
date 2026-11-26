@@ -97,6 +97,7 @@ function showPage() {
   const page = pages.includes(requested) ? requested : "dashboard";
   const canView = !cloudMode || Boolean(staff);
 
+    for (const id of pages) {
       const section = byId(id);
     if (section) section.hidden = !canView || id !== page;
   }
