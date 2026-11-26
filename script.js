@@ -311,16 +311,7 @@ function renderStudentRecords(students = activeStudents()) {
     const row = document.createElement("tr");
     row.insertCell().textContent = student.studentId;
 
-    if (!search || (!student.surname && !student.firstName)) {
-      const nameCell = row.insertCell();
-      nameCell.colSpan = search ? 4 : 1;
-      nameCell.textContent = student.name;
-    } else {
-      row.insertCell().textContent = student.surname || "—";
-      row.insertCell().textContent = student.firstName || "—";
-      row.insertCell().textContent = student.middleName || "—";
-      row.insertCell().textContent = student.suffix || "N/A";
-    }
+       row.insertCell().textContent = student.name;
 
     for (const key of ["course", "year", "contact", "status"]) {
       const cell = row.insertCell();
